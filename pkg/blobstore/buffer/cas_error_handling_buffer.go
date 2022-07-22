@@ -58,6 +58,10 @@ func (b *casErrorHandlingBuffer) tryRepeatedly(f func(Buffer) error) error {
 }
 
 func (b *casErrorHandlingBuffer) toValidatedChunkReader(maximumChunkSizeBytes int) ChunkReader {
+	// unknown size
+	if b.digest.GetSizeBytes() == 0 {
+		return newCASSemiValidatingChunkReader(b.toUnvalidatedChunkReader(0, maximumChunkSizeBytes), b.digest, b.source)
+	}
 	return newCASValidatingChunkReader(b.toUnvalidatedChunkReader(0, maximumChunkSizeBytes), b.digest, b.source)
 }
 

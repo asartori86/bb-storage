@@ -29,6 +29,10 @@ func (b *casChunkReaderBuffer) GetSizeBytes() (int64, error) {
 }
 
 func (b *casChunkReaderBuffer) toValidatedChunkReader() ChunkReader {
+	// unknown size
+	if b.digest.GetSizeBytes() == 0 {
+		return newCASSemiValidatingChunkReader(b.r, b.digest, b.source)
+	}
 	return newCASValidatingChunkReader(b.r, b.digest, b.source)
 }
 

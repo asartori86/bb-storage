@@ -7,6 +7,7 @@ import (
 	"github.com/buildbarn/bb-storage/pkg/blobstore"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/buffer"
 	"github.com/buildbarn/bb-storage/pkg/digest"
+	"github.com/buildbarn/bb-storage/pkg/justbuild"
 	"github.com/buildbarn/bb-storage/pkg/util"
 
 	"google.golang.org/grpc/codes"
@@ -151,17 +152,34 @@ func (ba *completenessCheckingBlobAccess) checkCompleteness(ctx context.Context,
 		if err != nil {
 			return err
 		}
-		treeMessage, err := ba.contentAddressableStorage.Get(ctx, treeDigest).ToProto(&remoteexecution.Tree{}, ba.maximumMessageSizeBytes)
-		if err != nil {
-			return util.StatusWrapf(err, "Failed to fetch output directory %#v", outputDirectory.Path)
-		}
-		tree := treeMessage.(*remoteexecution.Tree)
-		if err := findMissingQueue.addDirectory(tree.Root); err != nil {
-			return err
-		}
-		for _, child := range tree.Children {
-			if err := findMissingQueue.addDirectory(child); err != nil {
+		buf := ba.contentAddressableStorage.Get(ctx, treeDigest)
+
+		if len(treeDigest.GetHashBytes()) == justbuild.Size {
+			data, err := buf.ToByteSlice(ba.maximumMessageSizeBytes)
+			if err != nil {
 				return err
+			}
+			treeMessage, err := justbuild.ToDirectoryMessage(data)
+			if err != nil {
+				return err
+			}
+			if err := findMissingQueue.addDirectory(treeMessage); err != nil {
+				return err
+			}
+
+		} else {
+			treeMessage, err := buf.ToProto(&remoteexecution.Tree{}, ba.maximumMessageSizeBytes)
+			if err != nil {
+				return util.StatusWrapf(err, "Failed to fetch output directory %#v", outputDirectory.Path)
+			}
+			tree := treeMessage.(*remoteexecution.Tree)
+			if err := findMissingQueue.addDirectory(tree.Root); err != nil {
+				return err
+			}
+			for _, child := range tree.Children {
+				if err := findMissingQueue.addDirectory(child); err != nil {
+					return err
+				}
 			}
 		}
 	}
