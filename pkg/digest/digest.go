@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
+	"github.com/buildbarn/bb-storage/pkg/justbuild"
 	"github.com/buildbarn/bb-storage/pkg/util"
 	"github.com/google/uuid"
 
@@ -318,6 +319,9 @@ const (
 // GetKey generates a string representation of the digest object that
 // may be used as keys in hash tables.
 func (d Digest) GetKey(format KeyFormat) string {
+	if x := d.GetHashString(); len(x) == justbuild.Size*2 {
+		return x
+	}
 	switch format {
 	case KeyWithoutInstance:
 		_, _, sizeBytesEnd := d.unpack()
@@ -330,7 +334,7 @@ func (d Digest) GetKey(format KeyFormat) string {
 }
 
 func (d Digest) String() string {
-	return d.GetKey(KeyWithInstance)
+	return d.value
 }
 
 // ToSingletonSet creates a Set that contains a single element that
@@ -341,7 +345,7 @@ func (d Digest) ToSingletonSet() Set {
 	}
 }
 
-func getHasherFactory(hashLength int) func() hash.Hash {
+func getHasherFactory(hashLength int, d Digest) func() hash.Hash {
 	switch hashLength {
 	case md5.Size * 2:
 		return md5.New
@@ -353,6 +357,15 @@ func getHasherFactory(hashLength int) func() hash.Hash {
 		return sha512.New384
 	case sha512.Size * 2:
 		return sha512.New
+	case justbuild.Size * 2:
+		marker := d.value[:justbuild.MarkerSize]
+		if marker == justbuild.BlobMarker {
+			return justbuild.NewBlobHasher
+		}
+		if marker == justbuild.TreeMarker {
+			return justbuild.NewTreeHasher
+		}
+		panic("Unknown marker")
 	default:
 		panic("Digest hash is of unknown type")
 	}
@@ -364,7 +377,7 @@ func getHasherFactory(hashLength int) func() hash.Hash {
 // possible to validate data against a digest.
 func (d Digest) NewHasher() hash.Hash {
 	hashEnd, _, _ := d.unpack()
-	return getHasherFactory(hashEnd)()
+	return getHasherFactory(hashEnd, d)()
 }
 
 // GetDigestFunction returns a Function object that can be used to
@@ -378,7 +391,7 @@ func (d Digest) GetDigestFunction() Function {
 		instanceName: InstanceName{
 			value: d.value[sizeBytesEnd+1:],
 		},
-		hasherFactory: getHasherFactory(hashEnd),
+		hasherFactory: getHasherFactory(hashEnd, d),
 		hashLength:    hashEnd,
 	}
 }

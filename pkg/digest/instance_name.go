@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
+	"github.com/buildbarn/bb-storage/pkg/justbuild"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -100,7 +101,7 @@ func MustNewInstanceName(value string) InstanceName {
 func (in InstanceName) NewDigest(hash string, sizeBytes int64) (Digest, error) {
 	// Validate the hash.
 	if l := len(hash); l != md5.Size*2 && l != sha1.Size*2 &&
-		l != sha256.Size*2 && l != sha512.Size384*2 && l != sha512.Size*2 {
+		l != sha256.Size*2 && l != sha512.Size384*2 && l != sha512.Size*2 && l != justbuild.Size*2 {
 		return BadDigest, status.Errorf(codes.InvalidArgument, "Unknown digest hash length: %d characters", l)
 	}
 	for _, c := range hash {

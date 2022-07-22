@@ -9,6 +9,7 @@ go_library(
         "cas_cloned_buffer.go",
         "cas_error_handling_buffer.go",
         "cas_reader_buffer.go",
+        "cas_semi_validating_chunk_reader.go",
         "cas_validating_chunk_reader.go",
         "cas_validating_reader.go",
         "chunk_reader.go",

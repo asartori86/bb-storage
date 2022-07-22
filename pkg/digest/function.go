@@ -46,6 +46,18 @@ func (f Function) NewGenerator() *Generator {
 	}
 }
 
+func (f Function) GetHasherFactory() hash.Hash {
+	return f.hasherFactory()
+}
+
+func (f Function) ChangeHasherFactory(h func() hash.Hash) Function {
+	return Function{
+		instanceName:  f.instanceName,
+		hasherFactory: h,
+		hashLength:    f.hashLength,
+	}
+}
+
 // Generator is a writer that may be used to compute digests of newly
 // created files.
 type Generator struct {
@@ -68,4 +80,9 @@ func (dg *Generator) Sum() Digest {
 	return dg.instanceName.newDigestUnchecked(
 		hex.EncodeToString(dg.partialHash.Sum(nil)),
 		dg.sizeBytes)
+}
+
+// Utility function to get the byte size of the hash
+func (dg *Generator) GetSize() int {
+	return dg.partialHash.Size()
 }
