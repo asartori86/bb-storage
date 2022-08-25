@@ -2,6 +2,8 @@ package digest
 
 import (
 	"container/heap"
+
+	emptyblobs "github.com/buildbarn/bb-storage/pkg/empty_blobs"
 )
 
 // Set of digests. Sets are immutable and can be created using
@@ -42,7 +44,7 @@ func (s Set) Length() int {
 // corresponding with the empty blob removed.
 func (s Set) RemoveEmptyBlob() Set {
 	for start, digest := range s.digests {
-		if digest.GetSizeBytes() == 0 {
+		if emptyblobs.IsEmptyBlob(digest.GetHashString()) {
 			// At least one non-empty blob was found. Copy
 			// the set up to this point and filter all
 			// successive results.
