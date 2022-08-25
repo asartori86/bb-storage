@@ -33,6 +33,7 @@ go_library(
         "//pkg/clock",
         "//pkg/cloud/aws",
         "//pkg/digest",
+        "//pkg/empty_blobs:emptyblobs",
         "//pkg/eviction",
         "//pkg/justbuild",
         "//pkg/proto/icas",

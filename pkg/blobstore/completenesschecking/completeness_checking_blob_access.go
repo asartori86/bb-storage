@@ -71,6 +71,22 @@ func (q *findMissingQueue) addDirectory(directory *remoteexecution.Directory) er
 	return nil
 }
 
+func (q *findMissingQueue) addFromSlice(digests []digest.Digest) error {
+	if digests == nil {
+		return nil
+	}
+	for _, d := range digests {
+		if q.pending.Length() >= q.batchSize {
+			if err := q.finalize(); err != nil {
+				return err
+			}
+			q.pending = digest.NewSetBuilder()
+		}
+		q.pending.Add(d)
+	}
+	return nil
+}
+
 // Finalize by checking the last batch of digests for existence.
 func (q *findMissingQueue) finalize() error {
 	missing, err := q.contentAddressableStorage.FindMissing(q.context, q.pending.Build())
@@ -113,6 +129,38 @@ func NewCompletenessCheckingBlobAccess(actionCache, contentAddressableStorage bl
 	}
 }
 
+// returns a slice of unique Digests of all transitevely referenced objects
+func (ba *completenessCheckingBlobAccess) GetAllDigests(ctx context.Context, treeDigest digest.Digest) (digest.Set, error) {
+	uniqueDigests := digest.NewSetBuilder()
+	buf := ba.contentAddressableStorage.Get(ctx, treeDigest)
+	data, err := buf.ToByteSlice(ba.maximumMessageSizeBytes)
+	if err != nil {
+		return digest.Set{}, err
+	}
+	inst := treeDigest.GetInstanceName()
+	hashes, _, _, err := justbuild.GetAllHashes(data)
+	if err != nil {
+		return digest.Set{}, err
+	}
+	var digests []digest.Set
+	for _, h := range hashes {
+		d, err := inst.NewDigest(h, 0)
+		if err != nil {
+			return digest.Set{}, err
+		}
+		uniqueDigests.Add(d)
+		marker := h[:justbuild.MarkerSize]
+		if marker == justbuild.TreeMarker {
+			all, err := ba.GetAllDigests(ctx, d)
+			if err != nil {
+				return digest.Set{}, err
+			}
+			digests = append(digests, all)
+		}
+	}
+	return digest.GetUnion(append(digests, uniqueDigests.Build())), nil
+}
+
 func (ba *completenessCheckingBlobAccess) checkCompleteness(ctx context.Context, instanceName digest.InstanceName, actionResult *remoteexecution.ActionResult) error {
 	findMissingQueue := findMissingQueue{
 		context:                   ctx,
@@ -153,20 +201,12 @@ func (ba *completenessCheckingBlobAccess) checkCompleteness(ctx context.Context,
 			return err
 		}
 		buf := ba.contentAddressableStorage.Get(ctx, treeDigest)
-
 		if len(treeDigest.GetHashBytes()) == justbuild.Size {
-			data, err := buf.ToByteSlice(ba.maximumMessageSizeBytes)
+			digests, _ := ba.GetAllDigests(ctx, treeDigest)
+			err := findMissingQueue.addFromSlice(append(digests.Items(), treeDigest))
 			if err != nil {
 				return err
 			}
-			treeMessage, err := justbuild.ToDirectoryMessage(data)
-			if err != nil {
-				return err
-			}
-			if err := findMissingQueue.addDirectory(treeMessage); err != nil {
-				return err
-			}
-
 		} else {
 			treeMessage, err := buf.ToProto(&remoteexecution.Tree{}, ba.maximumMessageSizeBytes)
 			if err != nil {
