@@ -164,6 +164,10 @@ message BlobAccessConfiguration {
     // Only infrastructure errors (RPCs failing with INTERNAL,
     // UNAVAILABLE and UNKNOWN) are considered failures.
     ReadCanaryingBlobAccessConfiguration read_canarying = 23;
+
+    // Multi generation cache. Needed to guarantee the tree invariant
+    // for justbuild
+    MultiGenerationBlobAccessConfiguration multi_generation = 24;
   }
 
   // Was 'circular' (CircularBlobAccess). This backend has been replaced
@@ -855,4 +859,20 @@ message ReadCanaryingBlobAccessConfiguration {
   //
   // Recommended value: 300s
   google.protobuf.Duration maximum_cache_duration = 4;
+}
+
+message MultiGenerationBlobAccessConfiguration {
+  // number of generations. must be greater than 1
+  uint32 generations = 1;
+
+  // if, when checked, the size of the current generation is bigger
+  // than this threshold, the generations will rotate
+  uint64 minimum_rotation_size_bytes = 3;
+
+  // the size of the current generation will be checked every rotation_interval seconds
+  uint64 rotation_interval = 4;
+
+  // Path to a directory on disk where the generations will be created
+  string root_dir = 5;
+
 }

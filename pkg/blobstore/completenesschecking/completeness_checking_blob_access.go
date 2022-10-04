@@ -202,9 +202,15 @@ func (ba *completenessCheckingBlobAccess) checkCompleteness(ctx context.Context,
 		}
 		buf := ba.contentAddressableStorage.Get(ctx, treeDigest)
 		if len(treeDigest.GetHashBytes()) == justbuild.Size {
-			digests, _ := ba.GetAllDigests(ctx, treeDigest)
-			err := findMissingQueue.addFromSlice(append(digests.Items(), treeDigest))
+			data, err := buf.ToByteSlice(ba.maximumMessageSizeBytes)
 			if err != nil {
+				return err
+			}
+			treeMessage, err := justbuild.ToDirectoryMessage(data)
+			if err != nil {
+				return err
+			}
+			if err := findMissingQueue.addDirectory(treeMessage); err != nil {
 				return err
 			}
 		} else {

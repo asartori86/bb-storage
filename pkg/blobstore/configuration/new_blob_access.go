@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -189,6 +190,7 @@ func newNestedBlobAccessBare(configuration *pb.BlobAccessConfiguration, creator 
 		}, "remote", nil
 	case *pb.BlobAccessConfiguration_Sharding:
 		backends := make([]blobstore.BlobAccess, 0, len(backend.Sharding.Shards))
+		fmt.Printf("\n\n sharding lenght: %d\n\n", len(backend.Sharding.Shards))
 		weights := make([]uint32, 0, len(backend.Sharding.Shards))
 		var combinedDigestKeyFormat *digest.KeyFormat
 		for _, shard := range backend.Sharding.Shards {
@@ -238,6 +240,11 @@ func newNestedBlobAccessBare(configuration *pb.BlobAccessConfiguration, creator 
 			BlobAccess:      blobstore.NewSizeDistinguishingBlobAccess(small.BlobAccess, large.BlobAccess, backend.SizeDistinguishing.CutoffSizeBytes),
 			DigestKeyFormat: small.DigestKeyFormat.Combine(large.DigestKeyFormat),
 		}, "size_distinguishing", nil
+	case *pb.BlobAccessConfiguration_MultiGeneration:
+		return BlobAccessInfo{
+			BlobAccess:      blobstore.NewMultiGenerationBlobAccess(backend.MultiGeneration.Generations, backend.MultiGeneration.MinimumRotationSizeBytes, backend.MultiGeneration.RotationInterval, backend.MultiGeneration.RootDir),
+			DigestKeyFormat: digest.KeyWithInstance,
+		}, "multi_generation", nil
 	case *pb.BlobAccessConfiguration_Mirrored:
 		backendA, err := NewNestedBlobAccess(backend.Mirrored.BackendA, creator)
 		if err != nil {
@@ -260,6 +267,7 @@ func newNestedBlobAccessBare(configuration *pb.BlobAccessConfiguration, creator 
 			DigestKeyFormat: backendA.DigestKeyFormat.Combine(backendB.DigestKeyFormat),
 		}, "mirrored", nil
 	case *pb.BlobAccessConfiguration_Local:
+		fmt.Printf("\n\nlocal local\n\n")
 		digestKeyFormat := digest.KeyWithInstance
 		if !backend.Local.HierarchicalInstanceNames {
 			digestKeyFormat = creator.GetBaseDigestKeyFormat()
