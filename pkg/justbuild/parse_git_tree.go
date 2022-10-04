@@ -24,6 +24,10 @@ const (
 	Tree           BlobType = 2
 )
 
+func IsJustbuildTree(hash string) bool {
+	return len(hash) == Size*2 && hash[:2] == TreeMarker
+}
+
 func GetAllHashes(entries []byte) ([]string, []BlobType, []string, error) {
 	var hashes []string
 	var types []BlobType

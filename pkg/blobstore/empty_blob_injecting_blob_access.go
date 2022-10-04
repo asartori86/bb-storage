@@ -55,7 +55,7 @@ func (ba *emptyBlobInjectingBlobAccess) GetFromComposite(ctx context.Context, pa
 }
 
 func (ba *emptyBlobInjectingBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {
-	if digest.GetSizeBytes() == 0 {
+	if emptyblobs.IsEmptyBlob(digest.GetHashString()) {
 		_, err := b.ToByteSlice(0)
 		return err
 	}
