@@ -870,9 +870,17 @@ message MultiGenerationBlobAccessConfiguration {
   uint64 minimum_rotation_size_bytes = 3;
 
   // the size of the current generation will be checked every rotation_interval seconds
-  uint64 rotation_interval = 4;
+  uint64 rotation_interval_seconds = 4;
 
   // Path to a directory on disk where the generations will be created
   string root_dir = 5;
+
+  // number of concurrent goroutines in tree traversal while upstreaming from a older generation
+  // even though the upstream is performed in background, allowing a big number of goroutines
+  // can slow down the whole cache
+  uint32 tree_traversal_concurrency = 6;
+
+  // number of shards used for the in-memory cache by each single generation
+  uint32 n_shards_single_generation = 7;
 
 }

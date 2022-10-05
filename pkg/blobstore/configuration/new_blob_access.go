@@ -9,6 +9,7 @@ import (
 	"github.com/buildbarn/bb-storage/pkg/blobstore"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/local"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/mirrored"
+	"github.com/buildbarn/bb-storage/pkg/blobstore/multigeneration"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/readcaching"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/readfallback"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/sharding"
@@ -242,7 +243,7 @@ func newNestedBlobAccessBare(configuration *pb.BlobAccessConfiguration, creator 
 		}, "size_distinguishing", nil
 	case *pb.BlobAccessConfiguration_MultiGeneration:
 		return BlobAccessInfo{
-			BlobAccess:      blobstore.NewMultiGenerationBlobAccess(backend.MultiGeneration.Generations, backend.MultiGeneration.MinimumRotationSizeBytes, backend.MultiGeneration.RotationInterval, backend.MultiGeneration.RootDir),
+			BlobAccess:      multigeneration.NewMultiGenerationBlobAccess(backend.MultiGeneration.Generations, backend.MultiGeneration.MinimumRotationSizeBytes, backend.MultiGeneration.RotationIntervalSeconds, backend.MultiGeneration.RootDir, backend.MultiGeneration.TreeTraversalConcurrency, backend.MultiGeneration.NShardsSingleGeneration),
 			DigestKeyFormat: digest.KeyWithInstance,
 		}, "multi_generation", nil
 	case *pb.BlobAccessConfiguration_Mirrored:
