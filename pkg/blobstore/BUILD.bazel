@@ -18,7 +18,6 @@ go_library(
         "icas_read_buffer_factory.go",
         "iscc_read_buffer_factory.go",
         "metrics_blob_access.go",
-        "multi_generation_blob_access.go",
         "read_buffer_factory.go",
         "read_canarying_blob_access.go",
         "redis_blob_access.go",
