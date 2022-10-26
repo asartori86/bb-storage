@@ -4,6 +4,7 @@ go_library(
     name = "multigeneration",
     srcs = ["multi_generation_blob_access.go",
             "single_generation.go",
+            "sharded_multi_generation_blob_access.go"
             ],
     importpath = "github.com/buildbarn/bb-storage/pkg/blobstore/multigeneration",
     visibility = ["//visibility:public"],

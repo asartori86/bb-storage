@@ -28,16 +28,18 @@ type multiGenerationBlobAccess struct {
 	indexes                  []uint32
 	rotateLock               sync.RWMutex
 	generations              []*singleGeneration
+	treeTraverse             bool
 	semaphore                chan struct{}
 }
 
-func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64, timeInterval uint64, rootDir string, treeConcurrency uint32, nShards uint32) blobstore.BlobAccess {
+func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64, timeInterval uint64, rootDir string, treeConcurrency uint32, nShards uint32, treeTraverse bool) blobstore.BlobAccess {
 	if nGenerations <= 1 {
 		log.Panicf("ERROR: multiGenerationBlobAccess requires generations > 1 but got %d", nGenerations)
-
 	}
-	if treeConcurrency < 1 {
-		log.Panicf("ERROR: multiGenerationBlobAccess requires tree_traversal_concurrency > 0 but got %d", treeConcurrency)
+	if treeTraverse {
+		if treeConcurrency < 1 {
+			log.Panicf("ERROR: multiGenerationBlobAccess requires tree_traversal_concurrency > 0 but got %d", treeConcurrency)
+		}
 	}
 	if nShards < 1 {
 		log.Panicf("ERROR: multiGenerationBlobAccess requires n_shards_single_generation > 0 but got %d", nShards)
@@ -62,7 +64,10 @@ func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64,
 		indexes:                  indexes,
 		rotateLock:               sync.RWMutex{},
 		generations:              generations,
-		semaphore:                make(chan struct{}, treeConcurrency),
+		treeTraverse:             treeTraverse,
+	}
+	if treeTraverse {
+		ba.semaphore = make(chan struct{}, treeConcurrency)
 	}
 
 	// // find most recent directory
@@ -80,6 +85,9 @@ func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64,
 		}
 		ba.rotate()
 	}
+
+	// spawn goroutine that will periodically check the size of the current generation
+	// if the size is above the given threshold generations will rotate
 	go func() {
 		tick := time.NewTicker(time.Duration(ba.TimeInterval * uint64(time.Second)))
 		for {
@@ -87,6 +95,7 @@ func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64,
 			ba.maybeRotate()
 		}
 	}()
+
 	return &ba
 }
 
@@ -108,7 +117,7 @@ func (ba *multiGenerationBlobAccess) getFromGen(hash string, gen uint32) ([]byte
 		}
 	}
 	// it might be that generations rotated while uploading a tree
-	// so, part of it could be in a different generation
+	// so, part of it can be in a different generation
 	for _, i := range ba.indexes {
 		if ba.generations[i].has(hash) {
 			data, err := ba.generations[i].get(hash)
@@ -121,16 +130,20 @@ func (ba *multiGenerationBlobAccess) getFromGen(hash string, gen uint32) ([]byte
 }
 
 func (ba *multiGenerationBlobAccess) traverse(treeHash string, gen uint32, wg *sync.WaitGroup) {
+	defer wg.Done()
+	if !ba.treeTraverse {
+		return
+	}
 	ba.semaphore <- struct{}{}
 	defer func() {
-		wg.Done()
 		<-ba.semaphore
 	}()
 	currentIdx := ba.currentIndex()
 	data, g := ba.getFromGen(treeHash, gen)
 	hashes, types, _, err := justbuild.GetAllHashes(data)
 	if err != nil {
-		fmt.Printf("\n\ngetAllHashes %s\n\n", err)
+		log.Printf("\n\ngetAllHashes %s\n\n", err)
+		return
 	}
 	for i, hash := range hashes {
 		if emptyblobs.IsEmptyBlob(hash) {
@@ -180,7 +193,7 @@ func (ba *multiGenerationBlobAccess) Get(ctx context.Context, dgst digest.Digest
 		if ba.generations[i].has(hash) {
 			dat, gen := ba.getFromGen(hash, i)
 			if dat == nil {
-				log.Printf("has_gen %d, got nil from %d\n", i, gen)
+				return buffer.NewBufferFromError(fmt.Errorf("%s could not be retrieved from cas: has_gen %d, got nil from %d", dgst.String(), i, gen))
 			}
 			go ba.upstream(toBeCopied{idx: gen, hash: hash})
 			return buffer.NewValidatedBufferFromByteSlice(dat)
@@ -226,6 +239,8 @@ func (ba *multiGenerationBlobAccess) rotate() {
 	copy(rotated[1:], ba.indexes[:n-1])
 	rotated[0] = ba.indexes[n-1]
 	ba.indexes = rotated
+	log.Printf("\n\n rotated indexes %v\n\n", ba.indexes)
+
 }
 func (ba *multiGenerationBlobAccess) GetCapabilities(ctx context.Context, instanceName digest.InstanceName) (*remoteexecution.ServerCapabilities, error) {
 	return nil, nil
@@ -265,6 +280,5 @@ func (ba *multiGenerationBlobAccess) maybeRotate() {
 		ba.generations[next].reset()
 		ba.rotate()
 		ba.rotateLock.Unlock()
-		log.Printf("\n\n rotated idx %v\n\n", ba.indexes)
 	}
 }

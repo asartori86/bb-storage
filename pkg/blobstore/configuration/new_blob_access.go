@@ -3,7 +3,6 @@ package configuration
 import (
 	"archive/zip"
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"sync"
@@ -216,7 +215,6 @@ func (nc *simpleNestedBlobAccessCreator) newNestedBlobAccessBare(configuration *
 		}, "remote", nil
 	case *pb.BlobAccessConfiguration_Sharding:
 		backends := make([]blobstore.BlobAccess, 0, len(backend.Sharding.Shards))
-		fmt.Printf("\n\n sharding lenght: %d\n\n", len(backend.Sharding.Shards))
 		weights := make([]uint32, 0, len(backend.Sharding.Shards))
 		var combinedDigestKeyFormat *digest.KeyFormat
 		for _, shard := range backend.Sharding.Shards {
@@ -268,9 +266,30 @@ func (nc *simpleNestedBlobAccessCreator) newNestedBlobAccessBare(configuration *
 		}, "size_distinguishing", nil
 	case *pb.BlobAccessConfiguration_MultiGeneration:
 		return BlobAccessInfo{
-			BlobAccess:      multigeneration.NewMultiGenerationBlobAccess(backend.MultiGeneration.Generations, backend.MultiGeneration.MinimumRotationSizeBytes, backend.MultiGeneration.RotationIntervalSeconds, backend.MultiGeneration.RootDir, backend.MultiGeneration.TreeTraversalConcurrency, backend.MultiGeneration.NShardsSingleGeneration),
+			BlobAccess:      multigeneration.NewMultiGenerationBlobAccess(backend.MultiGeneration.NGenerations, backend.MultiGeneration.MinimumRotationSizeBytes, backend.MultiGeneration.RotationIntervalSeconds, backend.MultiGeneration.RootDir, backend.MultiGeneration.MaxTreeTraversalConcurrency, backend.MultiGeneration.NShardsSingleGeneration, backend.MultiGeneration.InternalTreeTraversal),
 			DigestKeyFormat: digest.KeyWithInstance,
 		}, "multi_generation", nil
+	case *pb.BlobAccessConfiguration_ShardedMultiGeneration:
+		nShards := len(backend.ShardedMultiGeneration.Shards)
+		backends := make([]blobstore.BlobAccess, 0, nShards)
+		for _, shard := range backend.ShardedMultiGeneration.Shards {
+			if shard.Backend == nil {
+				// Drained backend.
+				backends = append(backends, nil)
+			} else {
+				// Undrained backend.
+				backend, err := NewNestedBlobAccess(shard.Backend, creator)
+				if err != nil {
+					return BlobAccessInfo{}, "", err
+				}
+				backends = append(backends, backend.BlobAccess)
+			}
+		}
+		return BlobAccessInfo{
+			BlobAccess:      multigeneration.NewShardedMultiGenerationBlobAccess(backends, backend.ShardedMultiGeneration.MaxTreeTraversalConcurrency),
+			DigestKeyFormat: digest.KeyWithInstance,
+		}, "mirrored_multi_generation", nil
+
 	case *pb.BlobAccessConfiguration_Mirrored:
 		backendA, err := nc.NewNestedBlobAccess(backend.Mirrored.BackendA, creator)
 		if err != nil {
@@ -293,7 +312,6 @@ func (nc *simpleNestedBlobAccessCreator) newNestedBlobAccessBare(configuration *
 			DigestKeyFormat: backendA.DigestKeyFormat.Combine(backendB.DigestKeyFormat),
 		}, "mirrored", nil
 	case *pb.BlobAccessConfiguration_Local:
-		fmt.Printf("\n\nlocal local\n\n")
 		digestKeyFormat := digest.KeyWithInstance
 		if !backend.Local.HierarchicalInstanceNames {
 			digestKeyFormat = creator.GetBaseDigestKeyFormat()
