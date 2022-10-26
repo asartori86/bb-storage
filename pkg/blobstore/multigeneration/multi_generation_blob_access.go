@@ -112,7 +112,7 @@ func (ba *multiGenerationBlobAccess) getFromGen(hash string, gen uint32) ([]byte
 	for _, i := range ba.indexes {
 		if ba.generations[i].has(hash) {
 			data, err := ba.generations[i].get(hash)
-			if err != nil && data != nil {
+			if err == nil && data != nil {
 				return data, i
 			}
 		}
