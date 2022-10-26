@@ -84,13 +84,17 @@ const (
 	prime32  = 16777619
 )
 
-func (c *singleGeneration) shardIdx(key string) uint32 {
+func FNV(key string, nShards uint32) uint32 {
 	var hash uint32 = offset32
 	for i := 0; i < len(key); i++ {
 		hash ^= uint32(key[i])
 		hash *= prime32
 	}
-	return hash % c.nShards
+	return hash % nShards
+}
+
+func (c *singleGeneration) shardIdx(key string) uint32 {
+	return FNV(key, c.nShards)
 }
 
 func (c *singleGeneration) has(h string) bool {
