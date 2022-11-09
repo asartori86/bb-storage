@@ -142,7 +142,7 @@ func (ba *multiGenerationBlobAccess) traverse(treeHash string, gen uint32, wg *s
 	data, g := ba.getFromGen(treeHash, gen)
 	hashes, types, _, err := justbuild.GetAllHashes(data)
 	if err != nil {
-		log.Printf("\n\ngetAllHashes %s\n\n", err)
+		log.Printf("getAllHashes %s\n\n", err)
 		return
 	}
 	for i, hash := range hashes {
@@ -239,7 +239,7 @@ func (ba *multiGenerationBlobAccess) rotate() {
 	copy(rotated[1:], ba.indexes[:n-1])
 	rotated[0] = ba.indexes[n-1]
 	ba.indexes = rotated
-	log.Printf("\n\n rotated indexes %v\n\n", ba.indexes)
+	log.Printf("rotated indexes %v\n\n", ba.indexes)
 
 }
 func (ba *multiGenerationBlobAccess) GetCapabilities(ctx context.Context, instanceName digest.InstanceName) (*remoteexecution.ServerCapabilities, error) {
@@ -273,7 +273,7 @@ func (ba *multiGenerationBlobAccess) maybeRotate() {
 	currentIdx := ba.currentIndex()
 
 	size := ba.generations[currentIdx].size()
-	log.Printf("\n\n %s --> %s  [threshold = %s]\n\n", ba.generations[currentIdx].dir, prettyPrintSize(size), prettyPrintSize(ba.minimumRotationSizeBytes))
+	log.Printf("%s --> %s  [threshold = %s]\n\n", ba.generations[currentIdx].dir, prettyPrintSize(size), prettyPrintSize(ba.minimumRotationSizeBytes))
 	if size >= ba.minimumRotationSizeBytes {
 		ba.rotateLock.Lock()
 		next := ba.indexToBeDeleted()
