@@ -266,7 +266,7 @@ func (nc *simpleNestedBlobAccessCreator) newNestedBlobAccessBare(configuration *
 		}, "size_distinguishing", nil
 	case *pb.BlobAccessConfiguration_MultiGeneration:
 		return BlobAccessInfo{
-			BlobAccess:      multigeneration.NewMultiGenerationBlobAccess(backend.MultiGeneration.NGenerations, backend.MultiGeneration.MinimumRotationSizeBytes, backend.MultiGeneration.RotationIntervalSeconds, backend.MultiGeneration.RootDir, backend.MultiGeneration.MaxTreeTraversalConcurrency, backend.MultiGeneration.NShardsSingleGeneration, backend.MultiGeneration.InternalTreeTraversal),
+			BlobAccess:      nil, //multigeneration.NewMultiGenerationBlobAccess(backend.MultiGeneration.NGenerations, backend.MultiGeneration.MinimumRotationSizeBytes, backend.MultiGeneration.RotationIntervalSeconds, backend.MultiGeneration.RootDir, backend.MultiGeneration.MaxTreeTraversalConcurrency, backend.MultiGeneration.NShardsSingleGeneration, backend.MultiGeneration.InternalTreeTraversal),
 			DigestKeyFormat: digest.KeyWithInstance,
 		}, "multi_generation", nil
 	case *pb.BlobAccessConfiguration_ShardedMultiGeneration:
@@ -288,7 +288,7 @@ func (nc *simpleNestedBlobAccessCreator) newNestedBlobAccessBare(configuration *
 		return BlobAccessInfo{
 			BlobAccess:      multigeneration.NewShardedMultiGenerationBlobAccess(backends, backend.ShardedMultiGeneration.MaxTreeTraversalConcurrency),
 			DigestKeyFormat: digest.KeyWithInstance,
-		}, "mirrored_multi_generation", nil
+		}, "sharded_multi_generation", nil
 
 	case *pb.BlobAccessConfiguration_Mirrored:
 		backendA, err := nc.NewNestedBlobAccess(backend.Mirrored.BackendA, creator)
@@ -732,6 +732,7 @@ func NewBlobAccessFromConfiguration(terminationContext context.Context, terminat
 	if err != nil {
 		return BlobAccessInfo{}, err
 	}
+
 	return BlobAccessInfo{
 		BlobAccess:      creator.WrapTopLevelBlobAccess(backend.BlobAccess),
 		DigestKeyFormat: backend.DigestKeyFormat,

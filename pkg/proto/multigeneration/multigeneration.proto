@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package buildbarn.multigeneration;
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/buildbarn/bb-storage/pkg/proto/multigeneration";
+
+service ShardedMultiGenerationController {
+    rpc GetIfWantsToRotate(google.protobuf.Empty)
+        returns (MultiGenReply);
+    
+    rpc AcquireRotateLock(google.protobuf.Empty)
+      returns (google.protobuf.Empty);
+
+    // If the controller cannot lock the rotateLocks of all the shards, it may
+    // call this function.
+    rpc ReleaseRotateLock(google.protobuf.Empty)
+      returns (google.protobuf.Empty);
+
+    // requirements: 
+    // 1. rotateLock has been already acquired
+    // 2. rotateLock will be unlocked by this function
+    rpc DoRotate(google.protobuf.Empty)
+      returns (google.protobuf.Empty);
+  }
+
+  message MultiGenReply{
+    bool response = 1;
+  }

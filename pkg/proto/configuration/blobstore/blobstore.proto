@@ -974,7 +974,10 @@ message MultiGenerationBlobAccessConfiguration {
   // Set to false if it is used as backend for the ShardedMultiGeneration since
   // part of the tree can be on a different shard, so the traversal must be
   // orchestrated at an higher level.
-  bool internal_tree_traversal = 7;
+  // When used as backend for the ShardedMultiGeneration, this boolean is used
+  // to discriminate if a multi-generation shard can rotate without syncronization
+  // with the other shards.
+  bool autonomous = 7;
 
   // The maximum number of concurrent goroutines spawned in a tree
   // traversal while upstreaming from an older generation. Even though
@@ -1014,4 +1017,9 @@ message ShardedMultiGenerationBlobAccessConfiguration{
   // the upstream is performed in the background, allowing a
   // considerable number of goroutines can slow down the cache.
   uint32 max_tree_traversal_concurrency = 2;
+
+  // Only used by the scheduler. Shards will be queried if they need to rotate
+  // according to this parameter. It is recommened to set it to a fraction of
+  // MultiGenerationBlobAccessConfiguration.rotation_interval_seconds.
+  uint64 query_interval_seconds = 4;
 }
