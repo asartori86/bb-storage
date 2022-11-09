@@ -2,12 +2,14 @@ package multigeneration
 
 import (
 	"context"
+	"log"
 	"sync"
 
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/buildbarn/bb-storage/pkg/blobstore"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/buffer"
 	"github.com/buildbarn/bb-storage/pkg/digest"
+	emptyblobs "github.com/buildbarn/bb-storage/pkg/empty_blobs"
 	"github.com/buildbarn/bb-storage/pkg/justbuild"
 )
 
@@ -34,10 +36,39 @@ func (m *shardedMultiGenerationBlobAccess) Get(ctx context.Context, digest diges
 	}
 	return b
 }
+
+func ToDigestSet(b buffer.Buffer, dgst digest.Digest) (digest.Set, error) {
+	size, errSize := b.GetSizeBytes()
+	if errSize != nil {
+		return digest.EmptySet, errSize
+	}
+	bytes, errSlice := b.ToByteSlice(int(size))
+	if errSlice != nil {
+		return digest.EmptySet, errSlice
+	}
+	hashes, _, _, _ := justbuild.GetAllHashes(bytes)
+	setBuilder := digest.NewSetBuilder()
+	instName := dgst.GetInstanceName().String()
+	for _, h := range hashes {
+		curDgst := digest.MustNewDigest(instName, h, 0 /*sizeBytes*/)
+		setBuilder.Add(curDgst)
+	}
+	return setBuilder.Build(), nil
+}
+
 func (m *shardedMultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {
 	hash := digest.GetHashString()
 	i := FNV(hash, m.nShards)
-	return m.backends[i].Put(ctx, digest, b)
+	err := m.backends[i].Put(ctx, digest, b)
+	if err == nil {
+		if justbuild.IsJustbuildTree(hash) {
+			// The client first uploads the leaves and then the tree blob, so, we
+			// trigger upstreaming of the whole tree to make sure that each
+			// generation honors the invariant.
+			m.FindMissing(context.TODO(), digest.ToSingletonSet())
+		}
+	}
+	return err
 }
 
 func (m *shardedMultiGenerationBlobAccess) traverse(treeHash string, dgst digest.Digest) {
@@ -46,18 +77,25 @@ func (m *shardedMultiGenerationBlobAccess) traverse(treeHash string, dgst digest
 		<-m.semaphore
 	}()
 	b := m.backends[FNV(treeHash, m.nShards)].Get(context.TODO(), dgst)
-	size, err := b.GetSizeBytes()
-	if err == nil {
-
-		bytes, err := b.ToByteSlice(int(size))
-		if err == nil {
+	size, errSize := b.GetSizeBytes()
+	if errSize != nil {
+		log.Printf("err getSizeBytes %s %s\n\n", errSize, dgst)
+	} else {
+		bytes, errSlice := b.ToByteSlice(int(size))
+		if errSlice != nil {
+			log.Printf("err toByteSlice %s %s\n\n", errSlice, dgst)
+		} else {
 			hashes, _, _, _ := justbuild.GetAllHashes(bytes)
 			setBuilder := digest.NewSetBuilder()
+			instName := dgst.GetInstanceName().String()
 			for _, h := range hashes {
-				curDgst := digest.MustNewDigest(dgst.GetInstanceName().String(), h, 0)
+				curDgst := digest.MustNewDigest(instName, h, 0 /*sizeBytes*/)
 				setBuilder.Add(curDgst)
 			}
-			go m.FindMissing(context.TODO(), setBuilder.Build())
+			missing, _ := m.FindMissing(context.TODO(), setBuilder.Build())
+			if missing.Length() > 0 {
+				log.Printf("incomplete tree detected %s: missing blobs are %v\n", dgst.GetHashString(), missing)
+			}
 		}
 	}
 }
@@ -92,8 +130,9 @@ func (m *shardedMultiGenerationBlobAccess) FindMissing(ctx context.Context, dige
 	found, _, _ := digest.GetDifferenceAndIntersection(digests, globalMissing)
 	for _, dgst := range found.Items() {
 		h := dgst.GetHashString()
-		if !justbuild.IsJustbuildTree(h) {
+		if !justbuild.IsJustbuildTree(h) || emptyblobs.IsEmptyBlob(h) {
 			// if it is a simple blob, it has already been upstreamed
+			// if it is an empty blob, do nothing as well
 			continue
 		}
 		go m.traverse(h, dgst)
