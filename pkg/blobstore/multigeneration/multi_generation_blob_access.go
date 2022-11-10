@@ -207,7 +207,17 @@ func (ba *multiGenerationBlobAccess) Put(ctx context.Context, digest digest.Dige
 	ba.rotateLock.RLock()
 	defer ba.rotateLock.RUnlock()
 	idx := ba.currentIndex()
-	return ba.generations[idx].put(ctx, digest, b)
+	err := ba.generations[idx].put(ctx, digest, b)
+	if err != nil {
+		return err
+	}
+
+	if ba.treeTraverse && justbuild.IsJustbuildTree(digest.GetHashString()) {
+		// guarantees that the tree root and all its children are totally
+		// contained in one single generation
+		ba.generations[idx].findMissing(digest.ToSingletonSet())
+	}
+	return nil
 }
 
 func (ba *multiGenerationBlobAccess) FindMissing(ctx context.Context, digests digest.Set) (digest.Set, error) {
