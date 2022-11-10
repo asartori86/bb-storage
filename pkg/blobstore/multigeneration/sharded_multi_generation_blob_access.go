@@ -53,31 +53,16 @@ func (m *shardedMultiGenerationBlobAccess) Put(ctx context.Context, digest diges
 	i := FNV(hash, m.nShards)
 
 	if justbuild.IsJustbuildTree(hash) {
-		size, errSize := b.GetSizeBytes()
-		if errSize != nil {
-			return errSize
-		}
-		bytes, errSlice := b.ToByteSlice(int(size))
-		if errSlice != nil {
-			return errSlice
-		}
-		// The client first uploads the leaves and then the tree blob, so, we
-		// trigger upstreaming of the whole tree to make sure that each
-		// generation honors the invariant.
 
-		entries, err := EntriesSet(bytes, digest)
-		if err != nil {
-			return err
-		}
+		err := m.backends[i].Put(ctx, digest, b)
 
-		// wait till all the children are uplinked to the current generation
-		m.findMissing(context.TODO(), entries, true /*blocking*/, nil /*recursionWG*/)
-		err = m.backends[i].Put(ctx, digest, buffer.NewValidatedBufferFromByteSlice(bytes))
-
-		// since a rotation could have happened between the two previous calls
-		// we upstream again, but in the background since it is unlikely that
-		// a new rotation will happen soon
-		go m.findMissing(context.TODO(), digest.ToSingletonSet(), false /*blocking*/, nil /*recursionWG*/)
+		// since a rotation could have happened between the upload of the
+		// children and this root, we trigger one upstream of the whole tree.
+		// note, however, that this does not guarantee that the whole tree
+		// is contained within one generation, but at most two due to the fact
+		// that tree is not traversed within one single function call, and so,
+		// a rotation could happen in the middle of these function calls.
+		m.findMissing(context.TODO(), digest.ToSingletonSet(), true /*blocking*/, nil /*recursionWG*/)
 		return err
 	}
 
