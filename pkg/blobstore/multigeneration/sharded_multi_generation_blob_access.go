@@ -138,7 +138,7 @@ func (m *shardedMultiGenerationBlobAccess) findMissing(ctx context.Context, dige
 			// if it is an empty blob, do nothing as well
 			continue
 		}
-		callTraverse := func(recursionWG *sync.WaitGroup) { m.traverse(h, dgst, blocking, recursionWG) }
+		callTraverse := func(dgst digest.Digest, recursionWG *sync.WaitGroup) { m.traverse(h, dgst, blocking, recursionWG) }
 		if blocking {
 			isProcessingRootTree := false
 			if recursionWG == nil {
@@ -146,13 +146,13 @@ func (m *shardedMultiGenerationBlobAccess) findMissing(ctx context.Context, dige
 				isProcessingRootTree = true
 			}
 			recursionWG.Add(1)
-			go callTraverse(recursionWG)
+			go callTraverse(dgst, recursionWG)
 
 			if isProcessingRootTree {
 				recursionWG.Wait()
 			}
 		} else {
-			go callTraverse(nil)
+			go callTraverse(dgst, nil)
 		}
 	}
 	return globalMissing, nil
