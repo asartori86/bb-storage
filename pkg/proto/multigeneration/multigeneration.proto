@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package buildbarn.multigeneration;
+
+import "build/bazel/remote/execution/v2/remote_execution.proto";
+
+option go_package = "github.com/buildbarn/bb-storage/pkg/proto/multigeneration";
+
+// The Initial Size Class Cache (ISCC) is a data store that can be used
+// by bb_scheduler to store outcomes of previous executions of an
+// action. This data is then used during successive actions of the same
+// shape to pick the initial size class on which the action needs to be
+// run.
+//
+// It generally only makes sense to use this data store in case
+// platforms are declared that have multiple size classes.
+service ShardedMultiGenerationController {
+    rpc GetIfWantsToRotate(MultiGenRequest)
+        returns (MultiGenReply);
+    
+    rpc TryAcquireRotateLock(MultiGenRequest)
+        returns (MultiGenReply);
+
+    rpc ReleaseRotateLock(MultiGenRequest)
+        returns (MultiGenReply);
+
+    // assumptions: RotateLock has been already acquired
+    // this function will not release the lock
+    rpc DoRotate(MultiGenRequest)
+        returns (MultiGenReply);
+  }
+
+  message MultiGenRequest{}
+
+  message MultiGenReply{
+    bool response = 1;
+  }
