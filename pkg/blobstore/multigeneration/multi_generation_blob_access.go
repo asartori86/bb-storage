@@ -133,7 +133,6 @@ func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64,
 			ba.maybeRotate()
 		}
 	}()
-	log.Printf("done multiGen\n")
 	return &ba
 }
 
