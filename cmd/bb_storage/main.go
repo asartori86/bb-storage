@@ -1,21 +1,27 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"os"
+	"strings"
 
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/buildbarn/bb-storage/pkg/auth"
 	"github.com/buildbarn/bb-storage/pkg/blobstore"
 	blobstore_configuration "github.com/buildbarn/bb-storage/pkg/blobstore/configuration"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/grpcservers"
+	"github.com/buildbarn/bb-storage/pkg/blobstore/multigeneration"
 	"github.com/buildbarn/bb-storage/pkg/builder"
 	"github.com/buildbarn/bb-storage/pkg/capabilities"
+	"github.com/buildbarn/bb-storage/pkg/clock"
+	"github.com/buildbarn/bb-storage/pkg/digest"
 	"github.com/buildbarn/bb-storage/pkg/global"
 	bb_grpc "github.com/buildbarn/bb-storage/pkg/grpc"
 	"github.com/buildbarn/bb-storage/pkg/proto/configuration/bb_storage"
 	"github.com/buildbarn/bb-storage/pkg/proto/icas"
 	"github.com/buildbarn/bb-storage/pkg/proto/iscc"
+	mg_proto "github.com/buildbarn/bb-storage/pkg/proto/multigeneration"
 	"github.com/buildbarn/bb-storage/pkg/util"
 
 	"google.golang.org/genproto/googleapis/bytestream"
@@ -45,7 +51,24 @@ func main() {
 	// Content Addressable Storage (CAS).
 	var contentAddressableStorageInfo *blobstore_configuration.BlobAccessInfo
 	var contentAddressableStorage blobstore.BlobAccess
+	var multigenObj *multigeneration.MultiGenerationBlobAccess
 	if configuration.ContentAddressableStorage != nil {
+		b, errr := json.Marshal(configuration.ContentAddressableStorage)
+		if errr != nil {
+			log.Printf("marshaling error %v\n", errr)
+		} else {
+			x := string(b)
+			if strings.Contains(x, "\"MultiGeneration") {
+				multigenObj = multigeneration.NewMultiGenerationBlobAccess(4, 10*1000*1000, 20, "/storage-cas", 4, 128, false)
+			}
+		}
+		// var multigenObj := multigeneration.NewMultiGenerationBlobAccess(4, 200*1000*1000, 60, "/storage-cas", 4, 128, false)
+
+		// return BlobAccessInfo{
+		// 	BlobAccess:      multigeneration.NewMultiGenerationBlobAccess(backend.MultiGeneration.NGenerations, backend.MultiGeneration.MinimumRotationSizeBytes, backend.MultiGeneration.RotationIntervalSeconds, backend.MultiGeneration.RootDir, backend.MultiGeneration.MaxTreeTraversalConcurrency, backend.MultiGeneration.NShardsSingleGeneration, backend.MultiGeneration.InternalTreeTraversal),
+		// 	DigestKeyFormat: digest.KeyWithInstance,
+		// }, "multi_generation", nil
+		blobAccess := blobstore.NewEmptyBlobInjectingBlobAccess(blobstore.NewMetricsBlobAccess(multigenObj, clock.SystemClock, "cas", "multi_generation"))
 		info, authorizedBackend, allAuthorizers, err := newScannableBlobAccess(
 			configuration.ContentAddressableStorage,
 			blobstore_configuration.NewCASBlobAccessCreator(
@@ -54,10 +77,21 @@ func main() {
 		if err != nil {
 			log.Fatal("Failed to create Content Addressable Storage: ", err)
 		}
-		cacheCapabilitiesProviders = append(cacheCapabilitiesProviders, info.BlobAccess)
 		cacheCapabilitiesAuthorizers = append(cacheCapabilitiesAuthorizers, allAuthorizers...)
-		contentAddressableStorageInfo = &info
-		contentAddressableStorage = authorizedBackend
+		contentAddressableStorage = multigenObj
+		if multigenObj == nil {
+			log.Printf("not using multigenObj\n")
+			contentAddressableStorageInfo = &info
+			contentAddressableStorage = authorizedBackend
+			cacheCapabilitiesProviders = append(cacheCapabilitiesProviders, info.BlobAccess)
+
+		} else {
+			// contentAddressableStorage = authorizedBackend
+			log.Printf("using multigenObj\n")
+			contentAddressableStorage = blobAccess
+			contentAddressableStorageInfo = &blobstore_configuration.BlobAccessInfo{BlobAccess: multigenObj, DigestKeyFormat: digest.KeyWithInstance}
+			//	cacheCapabilitiesProviders = append(cacheCapabilitiesProviders, multigenObj)
+		}
 	}
 
 	// Action Cache (AC).
@@ -149,6 +183,9 @@ func main() {
 							grpcservers.NewByteStreamServer(
 								contentAddressableStorage,
 								1<<16))
+						if multigenObj != nil {
+							mg_proto.RegisterShardedMultiGenerationControllerServer(s, multigenObj)
+						}
 					}
 					if actionCache != nil {
 						remoteexecution.RegisterActionCacheServer(
@@ -208,7 +245,12 @@ func newNonScannableBlobAccess(configuration *bb_storage.NonScannableBlobAccessC
 		nil
 }
 
+func newMultiGenerationBlobAccessAndController(configuration *bb_storage.ScannableBlobAccessConfiguration) {
+
+}
+
 func newScannableBlobAccess(configuration *bb_storage.ScannableBlobAccessConfiguration, creator blobstore_configuration.BlobAccessCreator) (blobstore_configuration.BlobAccessInfo, blobstore.BlobAccess, []auth.Authorizer, error) {
+
 	info, err := blobstore_configuration.NewBlobAccessFromConfiguration(configuration.Backend, creator)
 	if err != nil {
 		return blobstore_configuration.BlobAccessInfo{}, nil, nil, err

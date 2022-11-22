@@ -13,21 +13,26 @@ import (
 	"github.com/buildbarn/bb-storage/pkg/justbuild"
 )
 
-type shardedMultiGenerationBlobAccess struct {
+type ShardedMultiGenerationBlobAccess struct {
 	nShards   uint32
 	backends  []blobstore.BlobAccess
 	semaphore chan struct{}
 }
 
-func NewShardedMultiGenerationBlobAccess(backends []blobstore.BlobAccess, concurrency uint32) blobstore.BlobAccess {
-	return &shardedMultiGenerationBlobAccess{
+func NewShardedMultiGenerationBlobAccess(backends []blobstore.BlobAccess, concurrency uint32) *ShardedMultiGenerationBlobAccess {
+	x := &ShardedMultiGenerationBlobAccess{
 		nShards:   uint32(len(backends)),
 		backends:  backends,
 		semaphore: make(chan struct{}, concurrency),
 	}
+	return x
 }
 
-func (m *shardedMultiGenerationBlobAccess) Get(ctx context.Context, digest digest.Digest) buffer.Buffer {
+// func (m *shardedMultiGenerationBlobAccess) GetIfWantsToRotate(ctx context.Context, in *mg_proto.MultiGenRequest) (*mg_proto.MultiGenReply, error) {
+
+// }
+
+func (m *ShardedMultiGenerationBlobAccess) Get(ctx context.Context, digest digest.Digest) buffer.Buffer {
 	hash := digest.GetHashString()
 	i := FNV(hash, m.nShards)
 	b := m.backends[i].Get(ctx, digest)
@@ -48,7 +53,7 @@ func EntriesSet(bytes []byte, dgst digest.Digest) (digest.Set, error) {
 	return setBuilder.Build(), nil
 }
 
-func (m *shardedMultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {
+func (m *ShardedMultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {
 	hash := digest.GetHashString()
 	i := FNV(hash, m.nShards)
 
@@ -70,7 +75,7 @@ func (m *shardedMultiGenerationBlobAccess) Put(ctx context.Context, digest diges
 
 }
 
-func (m *shardedMultiGenerationBlobAccess) traverse(treeHash string, dgst digest.Digest, blocking bool, wg *sync.WaitGroup) {
+func (m *ShardedMultiGenerationBlobAccess) traverse(treeHash string, dgst digest.Digest, blocking bool, wg *sync.WaitGroup) {
 	m.semaphore <- struct{}{}
 	defer func() {
 		<-m.semaphore
@@ -88,7 +93,7 @@ func (m *shardedMultiGenerationBlobAccess) traverse(treeHash string, dgst digest
 	}
 }
 
-func (m *shardedMultiGenerationBlobAccess) findMissing(ctx context.Context, digests digest.Set, blocking bool, recursionWG *sync.WaitGroup) (digest.Set, error) {
+func (m *ShardedMultiGenerationBlobAccess) findMissing(ctx context.Context, digests digest.Set, blocking bool, recursionWG *sync.WaitGroup) (digest.Set, error) {
 	digestsPerBackend := make([]digest.SetBuilder, 0, len(m.backends))
 	for range m.backends {
 
@@ -143,10 +148,10 @@ func (m *shardedMultiGenerationBlobAccess) findMissing(ctx context.Context, dige
 	return globalMissing, nil
 }
 
-func (m *shardedMultiGenerationBlobAccess) FindMissing(ctx context.Context, digests digest.Set) (digest.Set, error) {
+func (m *ShardedMultiGenerationBlobAccess) FindMissing(ctx context.Context, digests digest.Set) (digest.Set, error) {
 	return m.findMissing(ctx, digests, false /*blocking*/, nil /*recursionWG*/)
 }
 
-func (ba *shardedMultiGenerationBlobAccess) GetCapabilities(ctx context.Context, instanceName digest.InstanceName) (*remoteexecution.ServerCapabilities, error) {
+func (ba *ShardedMultiGenerationBlobAccess) GetCapabilities(ctx context.Context, instanceName digest.InstanceName) (*remoteexecution.ServerCapabilities, error) {
 	return nil, nil
 }

@@ -4,7 +4,8 @@ go_library(
     name = "multigeneration",
     srcs = ["multi_generation_blob_access.go",
             "single_generation.go",
-            "sharded_multi_generation_blob_access.go"
+            "sharded_multi_generation_blob_access.go",
+            "sharded_controller.go",
             ],
     importpath = "github.com/buildbarn/bb-storage/pkg/blobstore/multigeneration",
     visibility = ["//visibility:public"],
@@ -12,8 +13,12 @@ go_library(
         "//pkg/blobstore",
         "//pkg/blobstore/buffer",
         "//pkg/digest",
+        "//pkg/grpc",
+        "//pkg/proto/multigeneration",
+        "//pkg/proto/configuration/blobstore",
         "//pkg/empty_blobs:emptyblobs",
         "//pkg/justbuild",
         "@com_github_bazelbuild_remote_apis//build/bazel/remote/execution/v2:execution",
+	    "@org_golang_google_grpc//:go_default_library",
     ],
 )

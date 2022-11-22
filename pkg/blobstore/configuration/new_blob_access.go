@@ -241,7 +241,7 @@ func newNestedBlobAccessBare(configuration *pb.BlobAccessConfiguration, creator 
 		}, "size_distinguishing", nil
 	case *pb.BlobAccessConfiguration_MultiGeneration:
 		return BlobAccessInfo{
-			BlobAccess:      multigeneration.NewMultiGenerationBlobAccess(backend.MultiGeneration.NGenerations, backend.MultiGeneration.MinimumRotationSizeBytes, backend.MultiGeneration.RotationIntervalSeconds, backend.MultiGeneration.RootDir, backend.MultiGeneration.MaxTreeTraversalConcurrency, backend.MultiGeneration.NShardsSingleGeneration, backend.MultiGeneration.InternalTreeTraversal),
+			BlobAccess:      nil, //multigeneration.NewMultiGenerationBlobAccess(backend.MultiGeneration.NGenerations, backend.MultiGeneration.MinimumRotationSizeBytes, backend.MultiGeneration.RotationIntervalSeconds, backend.MultiGeneration.RootDir, backend.MultiGeneration.MaxTreeTraversalConcurrency, backend.MultiGeneration.NShardsSingleGeneration, backend.MultiGeneration.InternalTreeTraversal),
 			DigestKeyFormat: digest.KeyWithInstance,
 		}, "multi_generation", nil
 	case *pb.BlobAccessConfiguration_ShardedMultiGeneration:
@@ -263,7 +263,7 @@ func newNestedBlobAccessBare(configuration *pb.BlobAccessConfiguration, creator 
 		return BlobAccessInfo{
 			BlobAccess:      multigeneration.NewShardedMultiGenerationBlobAccess(backends, backend.ShardedMultiGeneration.MaxTreeTraversalConcurrency),
 			DigestKeyFormat: digest.KeyWithInstance,
-		}, "mirrored_multi_generation", nil
+		}, "sharded_multi_generation", nil
 
 	case *pb.BlobAccessConfiguration_Mirrored:
 		backendA, err := NewNestedBlobAccess(backend.Mirrored.BackendA, creator)
@@ -608,6 +608,7 @@ func NewBlobAccessFromConfiguration(configuration *pb.BlobAccessConfiguration, c
 	if err != nil {
 		return BlobAccessInfo{}, err
 	}
+
 	return BlobAccessInfo{
 		BlobAccess:      creator.WrapTopLevelBlobAccess(backend.BlobAccess),
 		DigestKeyFormat: backend.DigestKeyFormat,
@@ -638,3 +639,20 @@ func NewCASAndACBlobAccessFromConfiguration(configuration *pb.BlobstoreConfigura
 
 	return contentAddressableStorage.BlobAccess, actionCache.BlobAccess, nil
 }
+
+// func NewMultiGenCASAndControllerFromConfiguration(configuration *pb.BlobstoreConfiguration, casGrpcClientFactory grpc.ClientFactory, maximumMessageSizeBytes int) (BlobAccessInfo, mg_proto.ShardedMultiGenerationControllerServer, error) {
+// 	conf := configuration.GetContentAddressableStorage()
+// 	if conf == nil {
+// 		return BlobAccessInfo{}, nil, status.Error(codes.InvalidArgument, "Storage configuration not specified")
+// 	}
+// 	creator := NewCASBlobAccessCreator(casGrpcClientFactory, maximumMessageSizeBytes)
+// 	backend, backendType, err := newNestedBlobAccessBare(conf, creator)
+// 	if err != nil {
+// 		return BlobAccessInfo{}, nil, err
+// 	}
+
+// 	return BlobAccessInfo{
+// 		BlobAccess:      creator.WrapTopLevelBlobAccess(blobstore.NewMetricsBlobAccess(backend.BlobAccess, clock.SystemClock, creator.GetStorageTypeName(), backendType)),
+// 		DigestKeyFormat: backend.DigestKeyFormat,
+// 	}, nil, nil
+// }
