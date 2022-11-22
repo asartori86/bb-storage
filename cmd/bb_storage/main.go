@@ -51,18 +51,19 @@ func main() {
 	var contentAddressableStorage blobstore.BlobAccess
 	var multigenObj *multigeneration.MultiGenerationBlobAccess
 	if configuration.ContentAddressableStorage != nil {
-		multigenObj, allAuthorizers, err := multigeneration.NewMultiGenerationBlobAccessFromConfiguration(configuration.ContentAddressableStorage)
+		// if multigenObj is used here, it will shadow the outer one...
+		multigen, allAuthorizers, err := multigeneration.NewMultiGenerationBlobAccessFromConfiguration(configuration.ContentAddressableStorage)
+		multigenObj = multigen
 		if err != nil {
 			log.Fatal("Failed to create Content Addressable Storage: ", err)
 		}
 		casCreator := blobstore_configuration.NewCASBlobAccessCreator(grpcClientFactory, int(configuration.MaximumMessageSizeBytes))
 		if multigenObj != nil {
+			// apply the "decorators" invoked within the newScannableBlobAccess
 			blobAccess := casCreator.WrapTopLevelBlobAccess(
-				blobstore.NewEmptyBlobInjectingBlobAccess(
-					blobstore.NewMetricsBlobAccess(multigenObj, clock.SystemClock, "cas", "multi_generation")))
-			//blobAccess = blobstore.NewAuthorizingBlobAccess(blobAccess, allAuthorizers[0], allAuthorizers[1], allAuthorizers[2])
+				blobstore.NewMetricsBlobAccess(multigenObj, clock.SystemClock, "cas", "multi_generation"))
+			blobAccess = blobstore.NewAuthorizingBlobAccess(blobAccess, allAuthorizers[0], allAuthorizers[1], allAuthorizers[2])
 
-			log.Printf("using multigenObj\n")
 			cacheCapabilitiesAuthorizers = append(cacheCapabilitiesAuthorizers, allAuthorizers...)
 			contentAddressableStorage = blobAccess
 			contentAddressableStorageInfo = &blobstore_configuration.BlobAccessInfo{BlobAccess: multigenObj, DigestKeyFormat: digest.KeyWithInstance}
@@ -74,7 +75,6 @@ func main() {
 				log.Fatal("Failed to create Content Addressable Storage: ", err)
 			}
 			cacheCapabilitiesAuthorizers = append(cacheCapabilitiesAuthorizers, allAuthorizers...)
-			log.Printf("not using multigenObj\n")
 			contentAddressableStorageInfo = &info
 			contentAddressableStorage = authorizedBackend
 			cacheCapabilitiesProviders = append(cacheCapabilitiesProviders, info.BlobAccess)
