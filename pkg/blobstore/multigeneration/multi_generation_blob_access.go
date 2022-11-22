@@ -10,12 +10,15 @@ import (
 	"time"
 
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
+	"github.com/buildbarn/bb-storage/pkg/auth"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/buffer"
 	"github.com/buildbarn/bb-storage/pkg/digest"
 	emptyblobs "github.com/buildbarn/bb-storage/pkg/empty_blobs"
 	"github.com/buildbarn/bb-storage/pkg/justbuild"
+	bb_storage "github.com/buildbarn/bb-storage/pkg/proto/configuration/bb_storage"
 	pb "github.com/buildbarn/bb-storage/pkg/proto/configuration/blobstore"
 	mg_proto "github.com/buildbarn/bb-storage/pkg/proto/multigeneration"
+	"github.com/buildbarn/bb-storage/pkg/util"
 )
 
 type toBeCopied struct {
@@ -35,7 +38,35 @@ type MultiGenerationBlobAccess struct {
 	lastRotationTimeStamp    int64
 }
 
-func NewMultiGenerationBlobAccessFromConfiguration(*pb.BlobAccessConfiguration_MultiGeneration) {}
+func NewMultiGenerationBlobAccessFromConfiguration(conf *bb_storage.ScannableBlobAccessConfiguration) (*MultiGenerationBlobAccess, []auth.Authorizer, error) {
+	getAuthorizer, err := auth.DefaultAuthorizerFactory.NewAuthorizerFromConfiguration(conf.GetAuthorizer)
+	if err != nil {
+		return nil, nil, util.StatusWrap(err, "Failed to create Get() authorizer")
+	}
+	putAuthorizer, err := auth.DefaultAuthorizerFactory.NewAuthorizerFromConfiguration(conf.PutAuthorizer)
+	if err != nil {
+		return nil, nil, util.StatusWrap(err, "Failed to create Put() authorizer")
+	}
+	findMissingAuthorizer, err := auth.DefaultAuthorizerFactory.NewAuthorizerFromConfiguration(conf.FindMissingAuthorizer)
+	if err != nil {
+		return nil, nil, util.StatusWrap(err, "Failed to create FindMissing() authorizer")
+	}
+
+	switch backend := conf.Backend.Backend.(type) {
+	case *pb.BlobAccessConfiguration_MultiGeneration:
+		return NewMultiGenerationBlobAccess(backend.MultiGeneration.NGenerations,
+				backend.MultiGeneration.MinimumRotationSizeBytes,
+				backend.MultiGeneration.RotationIntervalSeconds,
+				backend.MultiGeneration.RootDir,
+				backend.MultiGeneration.MaxTreeTraversalConcurrency,
+				backend.MultiGeneration.NShardsSingleGeneration,
+				backend.MultiGeneration.InternalTreeTraversal),
+			[]auth.Authorizer{getAuthorizer, putAuthorizer, findMissingAuthorizer},
+			nil
+
+	}
+	return nil, nil, nil
+}
 
 func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64, timeInterval uint64, rootDir string, treeConcurrency uint32, nShards uint32, treeTraverse bool) *MultiGenerationBlobAccess {
 	if nGenerations <= 1 {
@@ -102,6 +133,7 @@ func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64,
 			ba.maybeRotate()
 		}
 	}()
+	log.Printf("done multiGen\n")
 	return &ba
 }
 
