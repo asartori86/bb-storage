@@ -916,7 +916,7 @@ message MultiGenerationBlobAccessConfiguration {
   // When used as backend for the ShardedMultiGeneration, this boolean is used
   // to discriminate if a multi-generation shard can rotate without syncronization
   // with the other shards.
-  bool internal_tree_traversal = 7;
+  bool autonomous = 7;
 
   // The maximum number of concurrent goroutines spawned in a tree
   // traversal while upstreaming from an older generation. Even though

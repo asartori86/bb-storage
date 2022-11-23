@@ -28,11 +28,11 @@ type toBeCopied struct {
 
 type MultiGenerationBlobAccess struct {
 	minimumRotationSizeBytes uint64
-	TimeInterval             uint64
+	timeInterval             uint64
 	indexes                  []uint32
 	rotateLock               sync.RWMutex
 	generations              []*singleGeneration
-	treeTraverse             bool
+	autonomous               bool
 	semaphore                chan struct{}
 	wantsToRotate            bool
 	lastRotationTimeStamp    int64
@@ -60,7 +60,7 @@ func NewMultiGenerationBlobAccessFromConfiguration(conf *bb_storage.ScannableBlo
 				backend.MultiGeneration.RootDir,
 				backend.MultiGeneration.MaxTreeTraversalConcurrency,
 				backend.MultiGeneration.NShardsSingleGeneration,
-				backend.MultiGeneration.InternalTreeTraversal),
+				backend.MultiGeneration.Autonomous),
 			[]auth.Authorizer{getAuthorizer, putAuthorizer, findMissingAuthorizer},
 			nil
 
@@ -68,11 +68,11 @@ func NewMultiGenerationBlobAccessFromConfiguration(conf *bb_storage.ScannableBlo
 	return nil, nil, nil
 }
 
-func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64, timeInterval uint64, rootDir string, treeConcurrency uint32, nShards uint32, treeTraverse bool) *MultiGenerationBlobAccess {
+func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64, timeInterval uint64, rootDir string, treeConcurrency uint32, nShards uint32, autonomous bool) *MultiGenerationBlobAccess {
 	if nGenerations <= 1 {
 		log.Panicf("ERROR: multiGenerationBlobAccess requires generations > 1 but got %d", nGenerations)
 	}
-	if treeTraverse {
+	if autonomous {
 		if treeConcurrency < 1 {
 			log.Panicf("ERROR: multiGenerationBlobAccess requires tree_traversal_concurrency > 0 but got %d", treeConcurrency)
 		}
@@ -96,15 +96,15 @@ func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64,
 	n.Wait()
 	ba := MultiGenerationBlobAccess{
 		minimumRotationSizeBytes: rotationSizeBytes,
-		TimeInterval:             timeInterval,
+		timeInterval:             timeInterval,
 		indexes:                  indexes,
 		rotateLock:               sync.RWMutex{},
 		generations:              generations,
-		treeTraverse:             treeTraverse,
+		autonomous:               autonomous,
 		wantsToRotate:            false,
 		lastRotationTimeStamp:    time.Now().Unix(),
 	}
-	if treeTraverse {
+	if autonomous {
 		ba.semaphore = make(chan struct{}, treeConcurrency)
 	}
 
@@ -127,7 +127,7 @@ func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64,
 	// spawn goroutine that will periodically check the size of the current generation
 	// if the size is above the given threshold generations will rotate
 	go func() {
-		tick := time.NewTicker(time.Duration(ba.TimeInterval * uint64(time.Second)))
+		tick := time.NewTicker(time.Duration(ba.timeInterval * uint64(time.Second)))
 		for {
 			<-tick.C
 			ba.maybeRotate()
@@ -152,6 +152,9 @@ func (ba *MultiGenerationBlobAccess) getFromGen(hash string, gen uint32) ([]byte
 		if err == nil && data != nil {
 			return data, gen
 		}
+		if err != nil {
+			log.Printf("blob %s not found in generation %d and got error %s, looking into other generations\n", hash, gen, err)
+		}
 	}
 	// it might be that generations rotated while uploading a tree
 	// so, part of it can be in a different generation
@@ -163,12 +166,15 @@ func (ba *MultiGenerationBlobAccess) getFromGen(hash string, gen uint32) ([]byte
 			}
 		}
 	}
-	panic(fmt.Errorf("%s should be present in cas but it is missing", hash))
+	log.Panicf("%s should be present in cas but it is missing\n", hash)
+	// we will never reach this, since log.Panicf will call panic()
+	// but the compiler needs this anyway
+	return nil, 0
 }
 
 func (ba *MultiGenerationBlobAccess) traverse(treeHash string, gen uint32, wg *sync.WaitGroup) {
 	defer wg.Done()
-	if !ba.treeTraverse {
+	if !ba.autonomous {
 		return
 	}
 	ba.semaphore <- struct{}{}
@@ -249,7 +255,7 @@ func (ba *MultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Dige
 		return err
 	}
 
-	if ba.treeTraverse && justbuild.IsJustbuildTree(digest.GetHashString()) {
+	if ba.autonomous && justbuild.IsJustbuildTree(digest.GetHashString()) {
 		// guarantees that the tree root and all its children are totally
 		// contained in one single generation
 		ba.generations[idx].findMissing(digest.ToSingletonSet())
@@ -322,26 +328,22 @@ func (ba *MultiGenerationBlobAccess) maybeRotate() {
 	checkTime := time.Now().Unix()
 	log.Printf("%s --> %s  [threshold = %s]\n\n", ba.generations[currentIdx].dir, prettyPrintSize(size), prettyPrintSize(ba.minimumRotationSizeBytes))
 	if size >= ba.minimumRotationSizeBytes {
-		// a rotation could have been triggered by another shard. In this
-		// case, we don't set the rotation flag to true, because it would
-		// result in a double rotation
+		ba.rotateLock.Lock()
+		// a rotation could have been triggered by another shard before we
+		// locked. In this case, we don't set the rotation flag to true,
+		// because it would result in a double rotation
 		if checkTime > ba.lastRotationTimeStamp {
-			// if the lock has been already acquired, it means that a
-			// rotation is going to happen
-			if ba.rotateLock.TryLock() {
-				if ba.treeTraverse {
-					// we can perform the rotation by our own
-					next := ba.indexToBeDeleted()
-					ba.generations[next].reset()
-					ba.rotate()
-				} else {
-					// just set a flag. the controller will handle it
-					ba.wantsToRotate = true
-				}
-				ba.rotateLock.Unlock()
+			if ba.autonomous {
+				// we can perform the rotation by our own
+				next := ba.indexToBeDeleted()
+				ba.generations[next].reset()
+				ba.rotate()
+			} else {
+				// just set a flag. the controller will handle it
+				ba.wantsToRotate = true
 			}
+			ba.rotateLock.Unlock()
 		}
-
 	}
 }
 

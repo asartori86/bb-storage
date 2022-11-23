@@ -11,8 +11,10 @@ import (
 	mg_proto "github.com/buildbarn/bb-storage/pkg/proto/multigeneration"
 )
 
+var request = &mg_proto.MultiGenRequest{}
+
 type shardedMultiGenerationController struct {
-	servers      []mg_proto.ShardedMultiGenerationControllerClient
+	clients      []mg_proto.ShardedMultiGenerationControllerClient
 	timeInterval uint64
 }
 
@@ -33,9 +35,9 @@ func NewShardedMultiGenerationControllerFromConfiguration(conf *pb.BlobAccessCon
 	return nil
 }
 
-func NewShardedMultiGenerationController(servers []mg_proto.ShardedMultiGenerationControllerClient, timeInterval uint64) *shardedMultiGenerationController {
+func NewShardedMultiGenerationController(clients []mg_proto.ShardedMultiGenerationControllerClient, timeInterval uint64) *shardedMultiGenerationController {
 	x := shardedMultiGenerationController{
-		servers:      servers,
+		clients:      clients,
 		timeInterval: timeInterval,
 	}
 	go func() {
@@ -50,10 +52,13 @@ func NewShardedMultiGenerationController(servers []mg_proto.ShardedMultiGenerati
 
 func (c *shardedMultiGenerationController) checkRotate() {
 	log.Printf("call checkRotate\n")
+	timeOut := time.Duration(c.timeInterval * uint64(time.Second))
 	wantsToRotate := false
 	wg := sync.WaitGroup{}
-	for _, server := range c.servers {
-		reply, err := server.GetIfWantsToRotate(context.TODO(), &mg_proto.MultiGenRequest{})
+	for _, client := range c.clients {
+		ctx, cancel := context.WithTimeout(context.Background(), timeOut)
+		defer cancel()
+		reply, err := client.GetIfWantsToRotate(ctx, request)
 		if err != nil {
 			log.Printf("ERRR %v\n", err)
 		}
@@ -69,9 +74,9 @@ func (c *shardedMultiGenerationController) checkRotate() {
 	gotAllTheLocks := false
 	waitTimeInterval := 1 * time.Second
 	for !gotAllTheLocks {
-		gotLock := make([]bool, len(c.servers))
-		for i, server := range c.servers {
-			reply, _ := server.TryAcquireRotateLock(context.TODO(), &mg_proto.MultiGenRequest{})
+		gotLock := make([]bool, len(c.clients))
+		for i, client := range c.clients {
+			reply, _ := client.TryAcquireRotateLock(context.TODO(), request)
 			gotLock[i] = reply.Response
 		}
 		tmp := true
@@ -83,7 +88,7 @@ func (c *shardedMultiGenerationController) checkRotate() {
 			// release the eventually acquired locks
 			for i, b := range gotLock {
 				if b {
-					c.servers[i].ReleaseRotateLock(context.TODO(), &mg_proto.MultiGenRequest{})
+					c.clients[i].ReleaseRotateLock(context.TODO(), request)
 				}
 			}
 			time.Sleep(waitTimeInterval)
@@ -91,18 +96,18 @@ func (c *shardedMultiGenerationController) checkRotate() {
 		}
 	}
 	// call rotate on all the servers in parallel
-	for _, server := range c.servers {
+	for _, client := range c.clients {
 		wg.Add(1)
-		go func(server mg_proto.ShardedMultiGenerationControllerClient) {
+		go func(client mg_proto.ShardedMultiGenerationControllerClient) {
 			defer wg.Done()
-			server.DoRotate(context.TODO(), &mg_proto.MultiGenRequest{})
-		}(server)
+			client.DoRotate(context.TODO(), request)
+		}(client)
 	}
 	wg.Wait()
 
 	// release the locks
 
-	for _, server := range c.servers {
-		server.ReleaseRotateLock(context.Background(), &mg_proto.MultiGenRequest{})
+	for _, client := range c.clients {
+		client.ReleaseRotateLock(context.Background(), request)
 	}
 }

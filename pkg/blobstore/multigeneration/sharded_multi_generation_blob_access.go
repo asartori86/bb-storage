@@ -37,7 +37,7 @@ func (m *ShardedMultiGenerationBlobAccess) Get(ctx context.Context, digest diges
 	i := FNV(hash, m.nShards)
 	b := m.backends[i].Get(ctx, digest)
 	if justbuild.IsJustbuildTree(hash) {
-		go m.traverse(hash, digest, false /*blocking*/, nil /*recursionWG*/)
+		go m.traverse(hash, digest)
 	}
 	return b
 }
@@ -64,7 +64,7 @@ func (m *ShardedMultiGenerationBlobAccess) Put(ctx context.Context, digest diges
 
 		leaves, _ := EntriesSet(bytes, digest)
 
-		missing, _ := m.FindMissing(context.TODO(), leaves)
+		missing, _ := m.FindMissing(ctx, leaves)
 		if !missing.Empty() {
 			log.Printf("incorrect tree upload detected. Tree %s has these missing leaves %v\n", digest.GetHashString(), missing.Items())
 		}
@@ -75,32 +75,29 @@ func (m *ShardedMultiGenerationBlobAccess) Put(ctx context.Context, digest diges
 		// is contained within one generation, but at most two due to the fact
 		// that tree is not traversed within one single function call, and so,
 		// a rotation could happen in the middle of these function calls.
-		go m.FindMissing(context.TODO(), digest.ToSingletonSet()) //, false /*blocking*/, nil /*recursionWG*/)
+		go m.FindMissing(context.Background(), digest.ToSingletonSet()) //, false /*blocking*/, nil /*recursionWG*/)
 
 		return err
 	}
 	return m.backends[i].Put(ctx, digest, b)
 }
 
-func (m *ShardedMultiGenerationBlobAccess) traverse(treeHash string, dgst digest.Digest, blocking bool, wg *sync.WaitGroup) {
+func (m *ShardedMultiGenerationBlobAccess) traverse(treeHash string, dgst digest.Digest) {
 	m.semaphore <- struct{}{}
 	defer func() {
 		<-m.semaphore
-		if wg != nil {
-			wg.Done()
-		}
 	}()
 	b := m.backends[FNV(treeHash, m.nShards)].Get(context.TODO(), dgst)
 	size, _ := b.GetSizeBytes()
 	bytes, _ := b.ToByteSlice(int(size))
 	entries, _ := EntriesSet(bytes, dgst)
-	missing, _ := m.findMissing(context.TODO(), entries, blocking, wg)
+	missing, _ := m.FindMissing(context.TODO(), entries)
 	if missing.Length() > 0 {
 		log.Printf("incomplete tree detected %s: missing blobs are %v\n", dgst.GetHashString(), missing)
 	}
 }
 
-func (m *ShardedMultiGenerationBlobAccess) findMissing(ctx context.Context, digests digest.Set, blocking bool, recursionWG *sync.WaitGroup) (digest.Set, error) {
+func (m *ShardedMultiGenerationBlobAccess) FindMissing(ctx context.Context, digests digest.Set) (digest.Set, error) {
 	digestsPerBackend := make([]digest.SetBuilder, 0, len(m.backends))
 	for range m.backends {
 
@@ -135,28 +132,9 @@ func (m *ShardedMultiGenerationBlobAccess) findMissing(ctx context.Context, dige
 			// if it is an empty blob, do nothing as well
 			continue
 		}
-		callTraverse := func(dgst digest.Digest, recursionWG *sync.WaitGroup) { m.traverse(h, dgst, blocking, recursionWG) }
-		if blocking {
-			isProcessingRootTree := false
-			if recursionWG == nil {
-				recursionWG = &sync.WaitGroup{}
-				isProcessingRootTree = true
-			}
-			recursionWG.Add(1)
-			go callTraverse(dgst, recursionWG)
-
-			if isProcessingRootTree {
-				recursionWG.Wait()
-			}
-		} else {
-			go callTraverse(dgst, nil)
-		}
+		go m.traverse(h, dgst)
 	}
 	return globalMissing, nil
-}
-
-func (m *ShardedMultiGenerationBlobAccess) FindMissing(ctx context.Context, digests digest.Set) (digest.Set, error) {
-	return m.findMissing(ctx, digests, false /*blocking*/, nil /*recursionWG*/)
 }
 
 func (ba *ShardedMultiGenerationBlobAccess) GetCapabilities(ctx context.Context, instanceName digest.InstanceName) (*remoteexecution.ServerCapabilities, error) {
