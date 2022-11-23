@@ -12,7 +12,8 @@ import (
 )
 
 type shardedMultiGenerationController struct {
-	servers []mg_proto.ShardedMultiGenerationControllerClient
+	servers      []mg_proto.ShardedMultiGenerationControllerClient
+	timeInterval uint64
 }
 
 func NewShardedMultiGenerationControllerFromConfiguration(conf *pb.BlobAccessConfiguration, grpcClientFactory grpc.ClientFactory) *shardedMultiGenerationController {
@@ -27,17 +28,18 @@ func NewShardedMultiGenerationControllerFromConfiguration(conf *pb.BlobAccessCon
 
 			backends = append(backends, backend)
 		}
-		return NewShardedMultiGenerationController(backends)
+		return NewShardedMultiGenerationController(backends, backend.ShardedMultiGeneration.QueryIntervalSeconds)
 	}
 	return nil
 }
 
-func NewShardedMultiGenerationController(servers []mg_proto.ShardedMultiGenerationControllerClient) *shardedMultiGenerationController {
+func NewShardedMultiGenerationController(servers []mg_proto.ShardedMultiGenerationControllerClient, timeInterval uint64) *shardedMultiGenerationController {
 	x := shardedMultiGenerationController{
-		servers: servers,
+		servers:      servers,
+		timeInterval: timeInterval,
 	}
 	go func() {
-		tick := time.NewTicker(time.Duration(5 * uint64(time.Second)))
+		tick := time.NewTicker(time.Duration(x.timeInterval * uint64(time.Second)))
 		for {
 			<-tick.C
 			x.checkRotate()

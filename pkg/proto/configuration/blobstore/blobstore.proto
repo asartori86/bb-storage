@@ -957,4 +957,9 @@ message ShardedMultiGenerationBlobAccessConfiguration{
   // the upstream is performed in the background, allowing a
   // considerable number of goroutines can slow down the cache.
   uint32 max_tree_traversal_concurrency = 2;
+
+  // Only used by the scheduler. Shards will be queried if they need to rotate
+  // according to this parameter. It is recommened to set it to a fraction of
+  // MultiGenerationBlobAccessConfiguration.rotation_interval_seconds.
+  uint64 query_interval_seconds = 4;
 }

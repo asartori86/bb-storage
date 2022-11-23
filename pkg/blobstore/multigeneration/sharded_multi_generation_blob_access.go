@@ -58,21 +58,28 @@ func (m *ShardedMultiGenerationBlobAccess) Put(ctx context.Context, digest diges
 	i := FNV(hash, m.nShards)
 
 	if justbuild.IsJustbuildTree(hash) {
+		// check if all leaves have been uploaded first
+		b1, b2 := b.CloneCopy(0)
+		bytes, _ := b1.ToByteSlice(0)
 
-		err := m.backends[i].Put(ctx, digest, b)
+		leaves, _ := EntriesSet(bytes, digest)
 
+		missing, _ := m.FindMissing(context.TODO(), leaves)
+		if !missing.Empty() {
+			log.Printf("incorrect tree upload detected. Tree %s has these missing leaves %v\n", digest.GetHashString(), missing.Items())
+		}
+		err := m.backends[i].Put(ctx, digest, b2)
 		// since a rotation could have happened between the upload of the
 		// children and this root, we trigger one upstream of the whole tree.
 		// note, however, that this does not guarantee that the whole tree
 		// is contained within one generation, but at most two due to the fact
 		// that tree is not traversed within one single function call, and so,
 		// a rotation could happen in the middle of these function calls.
-		m.findMissing(context.TODO(), digest.ToSingletonSet(), true /*blocking*/, nil /*recursionWG*/)
+		go m.FindMissing(context.TODO(), digest.ToSingletonSet()) //, false /*blocking*/, nil /*recursionWG*/)
+
 		return err
 	}
-
 	return m.backends[i].Put(ctx, digest, b)
-
 }
 
 func (m *ShardedMultiGenerationBlobAccess) traverse(treeHash string, dgst digest.Digest, blocking bool, wg *sync.WaitGroup) {
