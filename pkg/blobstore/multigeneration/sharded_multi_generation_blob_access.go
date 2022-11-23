@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"sync"
+	"time"
 
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/buildbarn/bb-storage/pkg/blobstore"
@@ -71,12 +72,11 @@ func (m *ShardedMultiGenerationBlobAccess) Put(ctx context.Context, digest diges
 		err := m.backends[i].Put(ctx, digest, b2)
 		// since a rotation could have happened between the upload of the
 		// children and this root, we trigger one upstream of the whole tree.
-		// note, however, that this does not guarantee that the whole tree
-		// is contained within one generation, but at most two due to the fact
-		// that tree is not traversed within one single function call, and so,
-		// a rotation could happen in the middle of these function calls.
-		go m.FindMissing(context.Background(), digest.ToSingletonSet()) //, false /*blocking*/, nil /*recursionWG*/)
-
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			m.FindMissing(ctx, digest.ToSingletonSet())
+		}()
 		return err
 	}
 	return m.backends[i].Put(ctx, digest, b)
@@ -87,11 +87,15 @@ func (m *ShardedMultiGenerationBlobAccess) traverse(treeHash string, dgst digest
 	defer func() {
 		<-m.semaphore
 	}()
-	b := m.backends[FNV(treeHash, m.nShards)].Get(context.TODO(), dgst)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	b := m.backends[FNV(treeHash, m.nShards)].Get(ctx, dgst)
 	size, _ := b.GetSizeBytes()
 	bytes, _ := b.ToByteSlice(int(size))
 	entries, _ := EntriesSet(bytes, dgst)
-	missing, _ := m.FindMissing(context.TODO(), entries)
+	ctx2, cancel2 := context.WithTimeout(ctx, 5*time.Minute)
+	missing, _ := m.FindMissing(ctx2, entries)
+	defer cancel2()
 	if missing.Length() > 0 {
 		log.Printf("incomplete tree detected %s: missing blobs are %v\n", dgst.GetHashString(), missing)
 	}
