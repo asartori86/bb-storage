@@ -77,3 +77,30 @@ func (l FileInfoList) Less(i, j int) bool {
 func (l FileInfoList) Swap(i, j int) {
 	l[i], l[j] = l[j], l[i]
 }
+
+// git sorts directory names as if they have a trailing "/"
+// so, according to git, this is the correct ordering
+// foo.txt (blob)
+// foo     (tree)
+type GitFileInfoList []FileInfo
+
+func (l GitFileInfoList) Len() int {
+	return len(l)
+}
+
+func preprocessName(x FileInfo) string {
+	if x.Type() == FileTypeDirectory {
+		return x.Name().String() + "/"
+	}
+	return x.Name().String()
+}
+
+func (l GitFileInfoList) Less(i, j int) bool {
+	a := preprocessName(l[i])
+	b := preprocessName(l[j])
+	return a < b
+}
+
+func (l GitFileInfoList) Swap(i, j int) {
+	l[i], l[j] = l[j], l[i]
+}
