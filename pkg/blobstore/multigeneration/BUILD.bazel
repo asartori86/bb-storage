@@ -13,6 +13,7 @@ go_library(
         "//pkg/auth",
         "//pkg/blobstore",
         "//pkg/blobstore/buffer",
+        "//pkg/blobstore/slicing",
         "//pkg/digest",
         "//pkg/empty_blobs:emptyblobs",
         "//pkg/grpc",

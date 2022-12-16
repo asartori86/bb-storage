@@ -278,7 +278,7 @@ func (nc *simpleNestedBlobAccessCreator) newNestedBlobAccessBare(configuration *
 				backends = append(backends, nil)
 			} else {
 				// Undrained backend.
-				backend, err := NewNestedBlobAccess(shard.Backend, creator)
+				backend, err := nc.NewNestedBlobAccess(shard.Backend, creator)
 				if err != nil {
 					return BlobAccessInfo{}, "", err
 				}

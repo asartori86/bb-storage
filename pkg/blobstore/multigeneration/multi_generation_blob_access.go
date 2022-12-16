@@ -12,6 +12,7 @@ import (
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/buildbarn/bb-storage/pkg/auth"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/buffer"
+	"github.com/buildbarn/bb-storage/pkg/blobstore/slicing"
 	"github.com/buildbarn/bb-storage/pkg/digest"
 	emptyblobs "github.com/buildbarn/bb-storage/pkg/empty_blobs"
 	"github.com/buildbarn/bb-storage/pkg/justbuild"
@@ -245,6 +246,23 @@ func (ba *MultiGenerationBlobAccess) Get(ctx context.Context, dgst digest.Digest
 	}
 	ba.rotateLock.RUnlock()
 	return buffer.NewBufferFromError(fmt.Errorf("%s could not be retrieved from cas", dgst.String()))
+}
+
+func (ba *MultiGenerationBlobAccess) GetFromComposite(ctx context.Context, parentDigest, childDigest digest.Digest, slicer slicing.BlobSlicer) buffer.Buffer {
+	ba.rotateLock.RLock()
+	parentHash := parentDigest.GetHashString()
+	childHash := childDigest.GetHashString()
+
+	log.Printf("COMPOSITE: parent=%s   child=%s\n", parentHash, childHash)
+	// upstram parent
+	go func() {
+		ctx := context.Background()
+		ctx, cancel := context.WithCancel(ctx)
+		ba.FindMissing(ctx, parentDigest.ToSingletonSet().RemoveEmptyBlob())
+		ba.rotateLock.RUnlock()
+		cancel()
+	}()
+	return ba.Get(ctx, childDigest)
 }
 
 func (ba *MultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {

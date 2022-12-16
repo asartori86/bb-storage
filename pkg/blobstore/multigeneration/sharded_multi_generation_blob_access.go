@@ -9,6 +9,7 @@ import (
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/buildbarn/bb-storage/pkg/blobstore"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/buffer"
+	"github.com/buildbarn/bb-storage/pkg/blobstore/slicing"
 	"github.com/buildbarn/bb-storage/pkg/digest"
 	emptyblobs "github.com/buildbarn/bb-storage/pkg/empty_blobs"
 	"github.com/buildbarn/bb-storage/pkg/justbuild"
@@ -37,6 +38,21 @@ func (m *ShardedMultiGenerationBlobAccess) Get(ctx context.Context, digest diges
 		go m.traverse(hash, digest)
 	}
 	return b
+}
+
+func (ba *ShardedMultiGenerationBlobAccess) GetFromComposite(ctx context.Context, parentDigest, childDigest digest.Digest, slicer slicing.BlobSlicer) buffer.Buffer {
+	parentHash := parentDigest.GetHashString()
+	childHash := childDigest.GetHashString()
+
+	log.Printf("COMPOSITE: parent=%s   child=%s\n", parentHash, childHash)
+	// upstram parent
+	go func() {
+		ctx := context.Background()
+		ctx, cancel := context.WithCancel(ctx)
+		ba.FindMissing(ctx, parentDigest.ToSingletonSet().RemoveEmptyBlob())
+		cancel()
+	}()
+	return ba.Get(ctx, childDigest)
 }
 
 func EntriesSet(bytes []byte, dgst digest.Digest) (digest.Set, error) {
