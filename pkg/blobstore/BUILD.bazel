@@ -39,6 +39,7 @@ go_library(
         "//pkg/cloud/aws",
         "//pkg/cloud/gcp",
         "//pkg/digest",
+        "//pkg/empty_blobs:emptyblobs",
         "//pkg/eviction",
         "//pkg/proto/fsac",
         "//pkg/proto/icas",

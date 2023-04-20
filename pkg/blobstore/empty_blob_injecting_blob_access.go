@@ -6,6 +6,7 @@ import (
 	"github.com/buildbarn/bb-storage/pkg/blobstore/buffer"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/slicing"
 	"github.com/buildbarn/bb-storage/pkg/digest"
+	emptyblobs "github.com/buildbarn/bb-storage/pkg/empty_blobs"
 )
 
 type emptyBlobInjectingBlobAccess struct {
@@ -39,21 +40,21 @@ func NewEmptyBlobInjectingBlobAccess(base BlobAccess) BlobAccess {
 }
 
 func (ba *emptyBlobInjectingBlobAccess) Get(ctx context.Context, digest digest.Digest) buffer.Buffer {
-	if digest.GetSizeBytes() == 0 {
+	if emptyblobs.IsEmptyBlob(digest.GetHashString()) {
 		return buffer.NewCASBufferFromByteSlice(digest, nil, buffer.UserProvided)
 	}
 	return ba.BlobAccess.Get(ctx, digest)
 }
 
 func (ba *emptyBlobInjectingBlobAccess) GetFromComposite(ctx context.Context, parentDigest, childDigest digest.Digest, slicer slicing.BlobSlicer) buffer.Buffer {
-	if childDigest.GetSizeBytes() == 0 {
+	if emptyblobs.IsEmptyBlob(childDigest.GetHashString()) {
 		return buffer.NewCASBufferFromByteSlice(childDigest, nil, buffer.UserProvided)
 	}
 	return ba.BlobAccess.GetFromComposite(ctx, parentDigest, childDigest, slicer)
 }
 
 func (ba *emptyBlobInjectingBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {
-	if digest.GetSizeBytes() == 0 {
+	if emptyblobs.IsEmptyBlob(digest.GetHashString()) {
 		_, err := b.ToByteSlice(0)
 		return err
 	}

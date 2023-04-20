@@ -143,6 +143,12 @@ func (ba *completenessCheckingBlobAccess) checkCompleteness(ctx context.Context,
 		if err != nil {
 			return err
 		}
+		if treeDigest.GetDigestFunction().GetEnumValue() == remoteexecution.DigestFunction_GITSHA1 {
+			if err := findMissingQueue.add(outputDirectory.TreeDigest); err != nil {
+				return err
+			}
+			continue
+		}
 		sizeBytes := treeDigest.GetSizeBytes()
 		if sizeBytes > remainingTreeSizeBytes {
 			return status.Errorf(codes.NotFound, "Combined size of all output directories exceeds maximum limit of %d bytes", ba.maximumTotalTreeSizeBytes)

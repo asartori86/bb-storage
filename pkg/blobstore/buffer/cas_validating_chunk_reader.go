@@ -25,6 +25,10 @@ type casValidatingChunkReader struct {
 // case of size or checksum mismatches.
 func newCASValidatingChunkReader(r ChunkReader, digest digest.Digest, source Source) ChunkReader {
 	sizeBytes := digest.GetSizeBytes()
+	// unknown size
+	if sizeBytes == 0 {
+		return newCASChecksumValidatingChunkReader(r, digest, source)
+	}
 	return &casValidatingChunkReader{
 		ChunkReader: r,
 		digest:      digest,

@@ -19,7 +19,9 @@ go_library(
     deps = [
         "//pkg/clock",
         "//pkg/digest/sha256tree",
+        "//pkg/empty_blobs:emptyblobs",
         "//pkg/eviction",
+        "//pkg/justbuild",
         "//pkg/proto/configuration/digest",
         "//pkg/util",
         "@com_github_bazelbuild_remote_apis//build/bazel/remote/execution/v2:execution",

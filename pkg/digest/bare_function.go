@@ -9,6 +9,7 @@ import (
 
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/buildbarn/bb-storage/pkg/digest/sha256tree"
+	"github.com/buildbarn/bb-storage/pkg/justbuild"
 )
 
 // SupportedDigestFunctions is the list of digest functions supported by
@@ -21,6 +22,7 @@ var SupportedDigestFunctions = []remoteexecution.DigestFunction_Value{
 	remoteexecution.DigestFunction_SHA256TREE,
 	remoteexecution.DigestFunction_SHA384,
 	remoteexecution.DigestFunction_SHA512,
+	remoteexecution.DigestFunction_GITSHA1,
 }
 
 // shortestSupportedHashStringSize is the size of the shortest string
@@ -78,6 +80,13 @@ var (
 		},
 		hashBytesSize: sha512.Size,
 	}
+	gitsha1BareFunction = bareFunction{
+		enumValue: remoteexecution.DigestFunction_GITSHA1,
+		hasherFactory: func(expectedSizeBytes int64) hash.Hash {
+			return justbuild.NewBlobHasher()
+		},
+		hashBytesSize: justbuild.Size,
+	}
 )
 
 // getBareFunctionByEnumValue returns the bare digest function that
@@ -99,6 +108,8 @@ func getBareFunction(digestFunction remoteexecution.DigestFunction_Value, hashSt
 			return &sha384BareFunction
 		case sha512.Size * 2:
 			return &sha512BareFunction
+		case justbuild.Size * 2:
+			return &gitsha1BareFunction
 		}
 	case remoteexecution.DigestFunction_MD5:
 		return &md5BareFunction
@@ -112,6 +123,8 @@ func getBareFunction(digestFunction remoteexecution.DigestFunction_Value, hashSt
 		return &sha384BareFunction
 	case remoteexecution.DigestFunction_SHA512:
 		return &sha512BareFunction
+	case remoteexecution.DigestFunction_GITSHA1:
+		return &gitsha1BareFunction
 	}
 	return nil
 }
