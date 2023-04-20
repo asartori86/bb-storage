@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
+	"github.com/buildbarn/bb-storage/pkg/justbuild"
 	"github.com/buildbarn/bb-storage/pkg/util"
 	"github.com/google/uuid"
 
@@ -344,8 +345,8 @@ const (
 func (d Digest) GetKey(format KeyFormat) string {
 	switch format {
 	case KeyWithoutInstance:
-		_, _, _, _, sizeBytesEnd := d.unpack()
-		return d.value[:sizeBytesEnd]
+		_, _, hashEnd, _, _ := d.unpack()
+		return d.value[:hashEnd]
 	case KeyWithInstance:
 		return d.value
 	default:
@@ -373,7 +374,13 @@ func (d Digest) ToSingletonSet() Set {
 // The expected size can be used as a hint to create an appropriately
 // sized hasher. If the expected size is unknown, provide math.MaxInt64.
 func (d Digest) NewHasher(expectedSizeBytes int64) hash.Hash {
-	digestFunction, _, _, _, _ := d.unpack()
+	digestFunction, hashStart, _, _, _ := d.unpack()
+	if digestFunction == remoteexecution.DigestFunction_GITSHA1 {
+		if d.value[hashStart:hashStart+justbuild.MarkerSize] == justbuild.BlobMarker {
+			return justbuild.NewBlobHasher()
+		}
+		return justbuild.NewTreeHasher()
+	}
 	return getBareFunction(digestFunction, 0).hasherFactory(expectedSizeBytes)
 }
 

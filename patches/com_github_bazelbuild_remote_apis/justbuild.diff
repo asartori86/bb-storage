@@ -1,0 +1,17 @@
+diff --git build/bazel/remote/execution/v2/remote_execution.proto build/bazel/remote/execution/v2/remote_execution.proto
+index 662274b..e6b0d2b 100644
+--- build/bazel/remote/execution/v2/remote_execution.proto
++++ build/bazel/remote/execution/v2/remote_execution.proto
+@@ -1890,6 +1890,12 @@ message DigestFunction {
+     // The BLAKE3 hash function.
+     // See https://github.com/BLAKE3-team/BLAKE3.
+     BLAKE3 = 9;
++
++    // use git-sha1 hasing function
++    // note that trees and blobs are hashed differently
++    // tree-hashes begin with 74
++    // blob-hashes begin with 62
++    GITSHA1 = 101;
+   }
+ }
+ 
