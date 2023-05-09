@@ -2,6 +2,7 @@ package buffer
 
 import (
 	"bytes"
+	"fmt"
 	"hash"
 	"io"
 
@@ -69,6 +70,9 @@ func (r *casValidatingChunkReader) maybeFinalize() error {
 	expectedChecksum := r.digest.GetHashBytes()
 	actualChecksum := r.hasher.Sum(nil)
 	if bytes.Compare(expectedChecksum, actualChecksum) != 0 {
+
+		fmt.Printf("\n\n333333333333333333333333\n\n")
+
 		return r.source.notifyCASHashMismatch(expectedChecksum, actualChecksum)
 	}
 	r.source.notifyDataValid()

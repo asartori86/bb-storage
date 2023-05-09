@@ -2,6 +2,7 @@ package buffer
 
 import (
 	"bytes"
+	"fmt"
 	"hash"
 	"io"
 
@@ -25,13 +26,21 @@ type casValidatingReader struct {
 // case of size or checksum mismatches.
 func newCASValidatingReader(r io.ReadCloser, digest digest.Digest, source Source) io.ReadCloser {
 	sizeBytes := digest.GetSizeBytes()
-	return &casValidatingReader{
+	if sizeBytes != 0 {
+		return &casValidatingReader{
+			ReadCloser: r,
+			digest:     digest,
+			source:     source,
+
+			hasher:         digest.NewHasher(sizeBytes),
+			bytesRemaining: sizeBytes,
+		}
+	}
+	return &casChecksumValidatingReader{
 		ReadCloser: r,
 		digest:     digest,
 		source:     source,
-
-		hasher:         digest.NewHasher(sizeBytes),
-		bytesRemaining: sizeBytes,
+		hasher:     digest.NewHasher(sizeBytes),
 	}
 }
 
@@ -39,6 +48,7 @@ func (r *casValidatingReader) compareChecksum() error {
 	expectedChecksum := r.digest.GetHashBytes()
 	actualChecksum := r.hasher.Sum(nil)
 	if bytes.Compare(expectedChecksum, actualChecksum) != 0 {
+		fmt.Printf("\n\n2222222222222222222222\n\n")
 		return r.source.notifyCASHashMismatch(expectedChecksum, actualChecksum)
 	}
 	return nil

@@ -12,6 +12,7 @@ go_library(
         "cas_checksum_validating_chunk_reader.go",
         "cas_validating_chunk_reader.go",
         "cas_validating_reader.go",
+        "cas_checksum_validating_reader.go",
         "chunk_reader.go",
         "chunk_reader_backed_reader.go",
         "common_conversions.go",

@@ -2,6 +2,7 @@ package blobstore
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math"
 
@@ -19,10 +20,12 @@ func (f casReadBufferFactory) NewBufferFromByteSlice(digest digest.Digest, data 
 }
 
 func (f casReadBufferFactory) NewBufferFromReader(digest digest.Digest, r io.ReadCloser, dataIntegrityCallback buffer.DataIntegrityCallback) buffer.Buffer {
+	fmt.Printf("\n\n ===================== cas read factory NewBufferFromReader %v, %T\n\n", digest, r)
 	return buffer.NewCASBufferFromReader(digest, r, buffer.BackendProvided(dataIntegrityCallback))
 }
 
 func (f casReadBufferFactory) NewBufferFromReaderAt(digest digest.Digest, r buffer.ReadAtCloser, sizeBytes int64, dataIntegrityCallback buffer.DataIntegrityCallback) buffer.Buffer {
+	fmt.Printf("\n\n cas read factory NewBufferFromReaderAt %v, %#v\n\n", digest, r)
 	return f.NewBufferFromReader(digest, newReaderFromReaderAt(r), dataIntegrityCallback)
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"hash"
 	"io"
+	"math"
 
 	"github.com/buildbarn/bb-storage/pkg/digest"
 )
@@ -31,7 +32,7 @@ func newCASChecksumValidatingChunkReader(r ChunkReader, digest digest.Digest, so
 		digest:      digest,
 		source:      source,
 
-		hasher: digest.NewHasher(0),
+		hasher: digest.NewHasher(math.MaxInt64),
 	}
 }
 

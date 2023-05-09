@@ -104,6 +104,9 @@ func (b *casErrorHandlingBuffer) ToChunkReader(off int64, maximumChunkSizeBytes 
 }
 
 func (b *casErrorHandlingBuffer) ToReader() io.ReadCloser {
+	if b.digest.GetSizeBytes() == 0 {
+		return newCASValidatingReader(b.toUnvalidatedReader(0), b.digest, b.source)
+	}
 	return newCASValidatingReader(b.toUnvalidatedReader(0), b.digest, b.source)
 }
 

@@ -343,6 +343,8 @@ const (
 // GetKey generates a string representation of the digest object that
 // may be used as keys in hash tables.
 func (d Digest) GetKey(format KeyFormat) string {
+	_, _, hashEnd, _, _ := d.unpack()
+	return d.value[:hashEnd]
 	switch format {
 	case KeyWithoutInstance:
 		_, _, hashEnd, _, _ := d.unpack()

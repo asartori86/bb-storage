@@ -1,6 +1,7 @@
 package blobstore
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/buildbarn/bb-storage/pkg/blobstore/buffer"
@@ -56,6 +57,7 @@ func (f *validationCachingReadBufferFactory) NewBufferFromReader(blobDigest dige
 	// use to bypass checksum validation. It's also likely not that
 	// useful to have, as these buffers don't provide random access
 	// in the first place.
+	fmt.Printf("\n\n --------------------------- New buffer from reader: %T\n\n", f.base)
 	return f.base.NewBufferFromReader(blobDigest, r, dataIntegrityCallback)
 }
 
