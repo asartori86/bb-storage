@@ -30,8 +30,10 @@ func NewCASBufferFromByteSlice(digest digest.Digest, data []byte, source Source)
 	// Compare the blob's size.
 	expectedSizeBytes := digest.GetSizeBytes()
 	actualSizeBytes := int64(len(data))
-	if expectedSizeBytes != actualSizeBytes {
+	// GITSHA1 may pass a digest with 0 sizebytes
+	if (expectedSizeBytes != 0) && (expectedSizeBytes != actualSizeBytes) {
 		return NewBufferFromError(source.notifyCASSizeMismatch(expectedSizeBytes, actualSizeBytes))
+
 	}
 
 	// Compare the blob's checksum.

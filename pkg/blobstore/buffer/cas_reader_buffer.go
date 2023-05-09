@@ -32,6 +32,9 @@ func (b *casReaderBuffer) GetSizeBytes() (int64, error) {
 }
 
 func (b *casReaderBuffer) toValidatedReader() io.ReadCloser {
+	if b.digest.GetSizeBytes() == 0 {
+		return newCASChecksumValidatingReader(b.r, b.digest, b.source)
+	}
 	return newCASValidatingReader(b.r, b.digest, b.source)
 }
 
