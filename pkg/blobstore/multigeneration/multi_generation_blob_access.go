@@ -267,6 +267,7 @@ func (ba *MultiGenerationBlobAccess) GetFromComposite(ctx context.Context, paren
 }
 
 func (ba *MultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {
+	log.Printf("Put: %#v", digest)
 	ba.rotateLock.RLock()
 	idx := ba.currentIndex()
 	err := ba.generations[idx].put(ctx, digest, b)
@@ -289,6 +290,7 @@ func (ba *MultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Dige
 }
 
 func (ba *MultiGenerationBlobAccess) FindMissing(ctx context.Context, digests digest.Set) (digest.Set, error) {
+	log.Printf("FindMissing: %#v", digests)
 
 	currentDigests := digests
 	upstream := []toBeCopied{}

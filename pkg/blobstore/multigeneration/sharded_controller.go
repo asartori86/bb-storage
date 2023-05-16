@@ -91,7 +91,7 @@ func (c *shardedMultiGenerationController) coordinateRotations() {
 }
 
 func (c *shardedMultiGenerationController) checkRotate(ctx context.Context) (bool, error) {
-	log.Printf("call checkRotate\n")
+	// log.Printf("call checkRotate\n")
 	for _, client := range c.clients {
 		reply, err := client.GetIfWantsToRotate(ctx, request)
 		if err != nil {
