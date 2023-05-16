@@ -29,6 +29,9 @@ func IsJustbuildTree(hash string) bool {
 }
 
 func GetAllTaggedHashes(entries []byte) ([]string, []BlobType, []string, error) {
+	if len(entries) == 0 {
+		return nil, nil, nil, fmt.Errorf("got empty tree content. This likely means that the bytesize of the corresponding blob has been deduced to be zero, while it is not the case")
+	}
 	var hashes []string
 	var types []BlobType
 	var names []string
@@ -79,7 +82,9 @@ func GetAllTaggedHashes(entries []byte) ([]string, []BlobType, []string, error) 
 
 func ToDirectoryMessage(entries []byte) (*remoteexecution.Directory, error) {
 	var directory remoteexecution.Directory
-
+	if len(entries) == 0 {
+		return &directory, nil
+	}
 	hashes, types, names, err := GetAllTaggedHashes(entries)
 	if err != nil {
 		return nil, err

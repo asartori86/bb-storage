@@ -57,7 +57,11 @@ func (ba *ShardedMultiGenerationBlobAccess) GetFromComposite(ctx context.Context
 }
 
 func EntriesSet(bytes []byte, dgst digest.Digest) (digest.Set, error) {
-	hashes, _, _, _ := justbuild.GetAllTaggedHashes(bytes)
+	hashes, _, _, err := justbuild.GetAllTaggedHashes(bytes)
+	if err != nil {
+		log.Printf("Failed to compute tagged hashes for tree %#v", dgst)
+		return digest.EmptySet, err
+	}
 	setBuilder := digest.NewSetBuilder()
 	instName := dgst.GetInstanceName().String()
 	for _, h := range hashes {
@@ -69,7 +73,12 @@ func EntriesSet(bytes []byte, dgst digest.Digest) (digest.Set, error) {
 
 func (m *ShardedMultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {
 	hash := digest.GetHashString()
+	log.Printf("ShardedPut: %#v, %v, %v", digest, hash, justbuild.IsJustbuildTree(hash))
 	i := FNV(hash, m.nShards)
+
+	if emptyblobs.IsEmptyBlob(hash) {
+		return nil
+	}
 
 	// simple blob
 	if !justbuild.IsJustbuildTree(hash) {
@@ -86,7 +95,7 @@ func (m *ShardedMultiGenerationBlobAccess) Put(ctx context.Context, digest diges
 		return err
 	}
 	b1, b2 := b.CloneCopy(int(s))
-	bytes, err := b1.ToByteSlice(int(digest.GetSizeBytes())) // first consumer
+	bytes, err := b1.ToByteSlice(int(s)) // first consumer
 	if err != nil {
 		return err
 	}
@@ -175,7 +184,10 @@ func (m *ShardedMultiGenerationBlobAccess) FindMissing(ctx context.Context, dige
 		wg.Add(1)
 		go func(idx int, digests digest.Set) {
 			defer wg.Done()
-			missing, _ := m.backends[idx].FindMissing(ctx, digests)
+			missing, err := m.backends[idx].FindMissing(ctx, digests)
+			if err != nil {
+				missingPerBackend[idx] = digests
+			}
 			missingPerBackend[idx] = missing
 		}(idx, builderPerBackend.Build())
 	}
