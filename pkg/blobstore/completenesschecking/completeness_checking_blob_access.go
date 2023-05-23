@@ -149,6 +149,17 @@ func (ba *completenessCheckingBlobAccess) checkCompleteness(ctx context.Context,
 			if err := findMissingQueue.add(outputDirectory.TreeDigest); err != nil {
 				return err
 			}
+			// buf := ba.Get(ctx, treeDigest)
+			// s, err := buf.GetSizeBytes()
+			// if err != nil {
+			// 	return err
+			// }
+			// entries, err := buf.ToByteSlice(int(s))
+
+			// directDpes, err := multigeneration.DirectDependencySet(entries, treeDigest)
+
+			// missing, err := ba.FindMissing(ctx, directDpes)
+
 			continue
 		}
 		sizeBytes := treeDigest.GetSizeBytes()

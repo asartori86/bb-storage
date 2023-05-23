@@ -185,7 +185,7 @@ func (ba *MultiGenerationBlobAccess) traverse(treeHash string, gen uint32, wg *s
 	}()
 	currentIdx := ba.currentIndex()
 	data, g := ba.getFromGen(treeHash, gen)
-	hashes, types, _, err := justbuild.GetAllTaggedHashes(data)
+	hashes, types, _, err := justbuild.GetTaggedHashes(data)
 	if err != nil {
 		log.Printf("getAllHashes %s\n\n", err)
 		return
@@ -267,10 +267,10 @@ func (ba *MultiGenerationBlobAccess) GetFromComposite(ctx context.Context, paren
 }
 
 func (ba *MultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {
-	log.Printf("Put: %#v", digest)
 	ba.rotateLock.RLock()
 	idx := ba.currentIndex()
 	err := ba.generations[idx].put(ctx, digest, b)
+	log.Printf("Put: %#v into generation %d", digest, idx)
 	if err != nil {
 		ba.rotateLock.RUnlock()
 		return err
@@ -290,8 +290,6 @@ func (ba *MultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Dige
 }
 
 func (ba *MultiGenerationBlobAccess) FindMissing(ctx context.Context, digests digest.Set) (digest.Set, error) {
-	log.Printf("FindMissing: %#v", digests)
-
 	currentDigests := digests
 	upstream := []toBeCopied{}
 	ba.rotateLock.RLock()
