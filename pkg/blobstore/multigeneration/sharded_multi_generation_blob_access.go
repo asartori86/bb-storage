@@ -56,8 +56,8 @@ func (ba *ShardedMultiGenerationBlobAccess) GetFromComposite(ctx context.Context
 	return ba.Get(ctx, childDigest)
 }
 
-func EntriesSet(bytes []byte, dgst digest.Digest) (digest.Set, error) {
-	hashes, _, _, err := justbuild.GetAllTaggedHashes(bytes)
+func DirectDependencySet(bytes []byte, dgst digest.Digest) (digest.Set, error) {
+	hashes, _, _, err := justbuild.GetTaggedHashes(bytes)
 	if err != nil {
 		log.Printf("Failed to compute tagged hashes for tree %#v", dgst)
 		return digest.EmptySet, err
@@ -69,6 +69,27 @@ func EntriesSet(bytes []byte, dgst digest.Digest) (digest.Set, error) {
 		setBuilder.Add(curDgst)
 	}
 	return setBuilder.Build(), nil
+}
+
+// func AllTransitivelyReferencedEntrySet(bytes []byte, dgst digest.Digest) {
+// 	directDeps, err := DirectDependencySet(bytes, dgst)
+// 	builder := digest.NewSetBuilder()
+// 	seen := builder.Build()
+// 	// digest.GetUnion()
+// 	// how to remove???
+// }
+
+func (m *ShardedMultiGenerationBlobAccess) checkCompleteness(ctx context.Context, digests digest.Set, tree digest.Digest) error {
+	missing, err := m.FindMissing(ctx, digests)
+	if err != nil {
+		return err
+	}
+	if !missing.Empty() {
+		msg := fmt.Sprintf("incorrect tree upload detected. Tree %s misses these direct dependencies %v\n", tree, missing.Items())
+		log.Printf(msg)
+		return fmt.Errorf(msg)
+	}
+	return nil
 }
 
 func (m *ShardedMultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {
@@ -100,19 +121,14 @@ func (m *ShardedMultiGenerationBlobAccess) Put(ctx context.Context, digest diges
 		return err
 	}
 
-	leaves, err := EntriesSet(bytes, digest)
+	leaves, err := DirectDependencySet(bytes, digest)
 	if err != nil {
 		return err
 	}
 
-	missing, err := m.FindMissing(ctx, leaves)
+	err = m.checkCompleteness(ctx, leaves, digest)
 	if err != nil {
 		return err
-	}
-	if !missing.Empty() {
-		msg := fmt.Sprintf("incorrect tree upload detected. Tree %s misses these direct dependencies %v\n", digest, missing.Items())
-		log.Printf(msg)
-		return fmt.Errorf(msg)
 	}
 	err = m.backends[i].Put(ctx, digest, b2) // second consumer
 	if err != nil {
@@ -121,14 +137,7 @@ func (m *ShardedMultiGenerationBlobAccess) Put(ctx context.Context, digest diges
 
 	// since a rotation could have happened between the upload of the
 	// children and the root, we trigger one upstream of the whole tree.
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-		m.FindMissing(ctx, digest.ToSingletonSet())
-	}()
-
-	// all good
-	return nil
+	return m.checkCompleteness(ctx, digest.ToSingletonSet(), digest)
 }
 
 func (m *ShardedMultiGenerationBlobAccess) traverse(treeHash string, dgst digest.Digest) {
@@ -149,7 +158,7 @@ func (m *ShardedMultiGenerationBlobAccess) traverse(treeHash string, dgst digest
 		log.Println(err)
 		return
 	}
-	entries, err := EntriesSet(bytes, dgst)
+	entries, err := DirectDependencySet(bytes, dgst)
 	if err != nil {
 		log.Println(err)
 		return
@@ -160,7 +169,9 @@ func (m *ShardedMultiGenerationBlobAccess) traverse(treeHash string, dgst digest
 		return
 	}
 	if missing.Length() > 0 {
-		log.Panicf("incomplete tree detected %s: missing blobs are %v\n", dgst.GetHashString(), missing)
+		err = fmt.Errorf("incomplete tree detected %s: missing blobs are %v\n", dgst.GetHashString(), missing)
+		log.Println(err)
+		return
 	}
 }
 
@@ -179,7 +190,7 @@ func (m *ShardedMultiGenerationBlobAccess) FindMissing(ctx context.Context, dige
 	for range m.backends {
 		missingPerBackend = append(missingPerBackend, digest.EmptySet)
 	}
-	var wg sync.WaitGroup
+	wg := sync.WaitGroup{}
 	for idx, builderPerBackend := range digestsPerBackend {
 		wg.Add(1)
 		go func(idx int, digests digest.Set) {
@@ -204,6 +215,12 @@ func (m *ShardedMultiGenerationBlobAccess) FindMissing(ctx context.Context, dige
 		}
 		go m.traverse(h, dgst)
 	}
+	// for x := range ch {
+	// 	if !x.ok {
+	// 		return digests, fmt.Errorf(x.msg)
+	// 	}
+	// }
+
 	return globalMissing, nil
 }
 

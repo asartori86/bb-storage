@@ -1,7 +1,10 @@
 package multigeneration
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -113,15 +116,30 @@ func (c *singleGeneration) put(ctx context.Context, digest digest.Digest, b buff
 		return err
 	}
 
-	bytes, err := b.ToByteSlice(int(size))
+	slice, err := b.ToByteSlice(int(size))
 	if err != nil {
 		return err
 	}
 	name := filepath.Join(c.dir, hash)
-	err = os.WriteFile(name, bytes, 0644)
+	err = os.WriteFile(name, slice, 0644)
 	if err != nil {
 		return err
 	}
+	data, err := os.ReadFile(name)
+	if err != nil {
+		return err
+	}
+	hasher := digest.NewHasher(size)
+	hasher.Write(data)
+	sum := hasher.Sum(nil)
+	expectedHash := digest.GetHashBytes()
+	if bytes.Compare(expectedHash, sum) != 0 {
+		return fmt.Errorf("failed to store blob %s: buffer has checksum %s, while %s was expected",
+			digest,
+			hex.EncodeToString(sum),
+			hex.EncodeToString(expectedHash))
+	}
+	log.Printf("added %s to %s", digest, c.dir)
 	i := c.shardIdx(hash)
 	c.shards[i].add(hash)
 	return nil
@@ -150,7 +168,9 @@ func (c *singleGeneration) reset() {
 			log.Panicf("Unable to access directory %s", c.dir)
 		}
 		for _, f := range entries {
-			os.RemoveAll(filepath.Join(c.dir, f.Name()))
+			name := filepath.Join(c.dir, f.Name())
+			log.Printf("gc evicted %s", name)
+			os.RemoveAll(name)
 		}
 	}()
 }
