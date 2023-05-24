@@ -46,6 +46,7 @@ type singleGeneration struct {
 	idx     uint32
 	nShards uint32
 	shards  []*shard
+	mutex   sync.RWMutex
 }
 
 func newSingleGeneration(root string, i uint32, nShards uint32) (*singleGeneration, time.Time) {
@@ -121,11 +122,15 @@ func (c *singleGeneration) put(ctx context.Context, digest digest.Digest, b buff
 		return err
 	}
 	name := filepath.Join(c.dir, hash)
+	c.mutex.Lock()
 	err = os.WriteFile(name, slice, 0644)
+	c.mutex.Unlock()
 	if err != nil {
 		return err
 	}
+	c.mutex.RLock()
 	data, err := os.ReadFile(name)
+	c.mutex.RUnlock()
 	if err != nil {
 		return err
 	}
@@ -154,7 +159,9 @@ func (c *singleGeneration) addToCache(hash string) {
 func (c *singleGeneration) uplink(h string, oldDir string) {
 	dst := filepath.Join(c.dir, h)
 	src := filepath.Join(oldDir, h)
+	c.mutex.Lock()
 	os.Link(src, dst)
+	c.mutex.Unlock()
 	if _, err := os.Stat(dst); err == nil {
 		c.addToCache(h)
 	}
@@ -163,21 +170,27 @@ func (c *singleGeneration) uplink(h string, oldDir string) {
 func (c *singleGeneration) reset() {
 	c.initShards()
 	go func() {
+		c.mutex.RLock()
 		entries, err := os.ReadDir(c.dir)
+		c.mutex.RUnlock()
 		if err != nil {
 			log.Panicf("Unable to access directory %s", c.dir)
 		}
+		c.mutex.Lock()
 		for _, f := range entries {
 			name := filepath.Join(c.dir, f.Name())
 			log.Printf("gc evicted %s", name)
 			os.RemoveAll(name)
 		}
+		c.mutex.Unlock()
 	}()
 }
 
 func (c *singleGeneration) get(hash string) ([]byte, error) {
 	name := filepath.Join(c.dir, hash)
+	c.mutex.RLock()
 	data, err := os.ReadFile(name)
+	c.mutex.RUnlock()
 	return data, err
 }
 
@@ -229,7 +242,9 @@ func (c *singleGeneration) findMissing(digests digest.Set) (digest.Set, []toBeCo
 }
 
 func (c *singleGeneration) size() uint64 {
+	c.mutex.RLock()
 	entries, err := os.ReadDir(c.dir)
+	c.mutex.RUnlock()
 	if err != nil {
 		log.Panicf("Unable to access directory %s", c.dir)
 	}

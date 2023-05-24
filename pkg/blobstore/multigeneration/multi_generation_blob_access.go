@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/rand"
 	"path/filepath"
 	"sync"
 	"time"
@@ -269,8 +270,18 @@ func (ba *MultiGenerationBlobAccess) GetFromComposite(ctx context.Context, paren
 func (ba *MultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {
 	ba.rotateLock.RLock()
 	idx := ba.currentIndex()
-	err := ba.generations[idx].put(ctx, digest, b)
-	log.Printf("Put: %#v into generation %d", digest, idx)
+	var err error
+	delay := 1 * time.Second
+	for i := 0; i < 5; i++ {
+		log.Printf("Put: %#v into generation %d - trial %d", digest, idx, i)
+		err = ba.generations[idx].put(ctx, digest, b)
+		if err == nil {
+			break
+		}
+		log.Printf("Put: %#v into generation %d - trial %d got %s", digest, idx, i, err)
+		time.Sleep(delay + time.Duration(10*rand.Float32()*float32(time.Second)))
+		delay *= 2
+	}
 	if err != nil {
 		ba.rotateLock.RUnlock()
 		return err
