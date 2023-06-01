@@ -25,18 +25,108 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type MultiGenStatus_Value int32
+
+const (
+	MultiGenStatus_OK              MultiGenStatus_Value = 0
+	MultiGenStatus_ROTATION_NEEDED MultiGenStatus_Value = 1
+	MultiGenStatus_RESET_NEEDED    MultiGenStatus_Value = 2
+	MultiGenStatus_INTERNAL_ERROR  MultiGenStatus_Value = 3
+)
+
+// Enum value maps for MultiGenStatus_Value.
+var (
+	MultiGenStatus_Value_name = map[int32]string{
+		0: "OK",
+		1: "ROTATION_NEEDED",
+		2: "RESET_NEEDED",
+		3: "INTERNAL_ERROR",
+	}
+	MultiGenStatus_Value_value = map[string]int32{
+		"OK":              0,
+		"ROTATION_NEEDED": 1,
+		"RESET_NEEDED":    2,
+		"INTERNAL_ERROR":  3,
+	}
+)
+
+func (x MultiGenStatus_Value) Enum() *MultiGenStatus_Value {
+	p := new(MultiGenStatus_Value)
+	*p = x
+	return p
+}
+
+func (x MultiGenStatus_Value) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (MultiGenStatus_Value) Descriptor() protoreflect.EnumDescriptor {
+	return file_pkg_proto_multigeneration_multigeneration_proto_enumTypes[0].Descriptor()
+}
+
+func (MultiGenStatus_Value) Type() protoreflect.EnumType {
+	return &file_pkg_proto_multigeneration_multigeneration_proto_enumTypes[0]
+}
+
+func (x MultiGenStatus_Value) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use MultiGenStatus_Value.Descriptor instead.
+func (MultiGenStatus_Value) EnumDescriptor() ([]byte, []int) {
+	return file_pkg_proto_multigeneration_multigeneration_proto_rawDescGZIP(), []int{0, 0}
+}
+
+type MultiGenStatus struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *MultiGenStatus) Reset() {
+	*x = MultiGenStatus{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_pkg_proto_multigeneration_multigeneration_proto_msgTypes[0]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *MultiGenStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MultiGenStatus) ProtoMessage() {}
+
+func (x *MultiGenStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_proto_multigeneration_multigeneration_proto_msgTypes[0]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MultiGenStatus.ProtoReflect.Descriptor instead.
+func (*MultiGenStatus) Descriptor() ([]byte, []int) {
+	return file_pkg_proto_multigeneration_multigeneration_proto_rawDescGZIP(), []int{0}
+}
+
 type MultiGenReply struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Response bool `protobuf:"varint,1,opt,name=response,proto3" json:"response,omitempty"`
+	Status MultiGenStatus_Value `protobuf:"varint,1,opt,name=status,proto3,enum=buildbarn.multigeneration.MultiGenStatus_Value" json:"status,omitempty"`
 }
 
 func (x *MultiGenReply) Reset() {
 	*x = MultiGenReply{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_pkg_proto_multigeneration_multigeneration_proto_msgTypes[0]
+		mi := &file_pkg_proto_multigeneration_multigeneration_proto_msgTypes[1]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -49,7 +139,7 @@ func (x *MultiGenReply) String() string {
 func (*MultiGenReply) ProtoMessage() {}
 
 func (x *MultiGenReply) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_multigeneration_multigeneration_proto_msgTypes[0]
+	mi := &file_pkg_proto_multigeneration_multigeneration_proto_msgTypes[1]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -62,14 +152,14 @@ func (x *MultiGenReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MultiGenReply.ProtoReflect.Descriptor instead.
 func (*MultiGenReply) Descriptor() ([]byte, []int) {
-	return file_pkg_proto_multigeneration_multigeneration_proto_rawDescGZIP(), []int{0}
+	return file_pkg_proto_multigeneration_multigeneration_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *MultiGenReply) GetResponse() bool {
+func (x *MultiGenReply) GetStatus() MultiGenStatus_Value {
 	if x != nil {
-		return x.Response
+		return x.Status
 	}
-	return false
+	return MultiGenStatus_OK
 }
 
 var File_pkg_proto_multigeneration_multigeneration_proto protoreflect.FileDescriptor
@@ -81,34 +171,51 @@ var file_pkg_proto_multigeneration_multigeneration_proto_rawDesc = []byte{
 	0x6f, 0x12, 0x19, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x62, 0x61, 0x72, 0x6e, 0x2e, 0x6d, 0x75, 0x6c,
 	0x74, 0x69, 0x67, 0x65, 0x6e, 0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x1a, 0x1b, 0x67, 0x6f,
 	0x6f, 0x67, 0x6c, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2f, 0x65, 0x6d,
-	0x70, 0x74, 0x79, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0x2b, 0x0a, 0x0d, 0x4d, 0x75, 0x6c,
-	0x74, 0x69, 0x47, 0x65, 0x6e, 0x52, 0x65, 0x70, 0x6c, 0x79, 0x12, 0x1a, 0x0a, 0x08, 0x72, 0x65,
-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x08, 0x72, 0x65,
-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x32, 0xc0, 0x02, 0x0a, 0x20, 0x53, 0x68, 0x61, 0x72, 0x64,
-	0x65, 0x64, 0x4d, 0x75, 0x6c, 0x74, 0x69, 0x47, 0x65, 0x6e, 0x65, 0x72, 0x61, 0x74, 0x69, 0x6f,
-	0x6e, 0x43, 0x6f, 0x6e, 0x74, 0x72, 0x6f, 0x6c, 0x6c, 0x65, 0x72, 0x12, 0x56, 0x0a, 0x12, 0x47,
-	0x65, 0x74, 0x49, 0x66, 0x57, 0x61, 0x6e, 0x74, 0x73, 0x54, 0x6f, 0x52, 0x6f, 0x74, 0x61, 0x74,
-	0x65, 0x12, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f,
+	0x70, 0x74, 0x79, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0x5c, 0x0a, 0x0e, 0x4d, 0x75, 0x6c,
+	0x74, 0x69, 0x47, 0x65, 0x6e, 0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x22, 0x4a, 0x0a, 0x05, 0x56,
+	0x61, 0x6c, 0x75, 0x65, 0x12, 0x06, 0x0a, 0x02, 0x4f, 0x4b, 0x10, 0x00, 0x12, 0x13, 0x0a, 0x0f,
+	0x52, 0x4f, 0x54, 0x41, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x4e, 0x45, 0x45, 0x44, 0x45, 0x44, 0x10,
+	0x01, 0x12, 0x10, 0x0a, 0x0c, 0x52, 0x45, 0x53, 0x45, 0x54, 0x5f, 0x4e, 0x45, 0x45, 0x44, 0x45,
+	0x44, 0x10, 0x02, 0x12, 0x12, 0x0a, 0x0e, 0x49, 0x4e, 0x54, 0x45, 0x52, 0x4e, 0x41, 0x4c, 0x5f,
+	0x45, 0x52, 0x52, 0x4f, 0x52, 0x10, 0x03, 0x22, 0x58, 0x0a, 0x0d, 0x4d, 0x75, 0x6c, 0x74, 0x69,
+	0x47, 0x65, 0x6e, 0x52, 0x65, 0x70, 0x6c, 0x79, 0x12, 0x47, 0x0a, 0x06, 0x73, 0x74, 0x61, 0x74,
+	0x75, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x2f, 0x2e, 0x62, 0x75, 0x69, 0x6c, 0x64,
+	0x62, 0x61, 0x72, 0x6e, 0x2e, 0x6d, 0x75, 0x6c, 0x74, 0x69, 0x67, 0x65, 0x6e, 0x65, 0x72, 0x61,
+	0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x4d, 0x75, 0x6c, 0x74, 0x69, 0x47, 0x65, 0x6e, 0x53, 0x74, 0x61,
+	0x74, 0x75, 0x73, 0x2e, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x52, 0x06, 0x73, 0x74, 0x61, 0x74, 0x75,
+	0x73, 0x32, 0xba, 0x03, 0x0a, 0x20, 0x53, 0x68, 0x61, 0x72, 0x64, 0x65, 0x64, 0x4d, 0x75, 0x6c,
+	0x74, 0x69, 0x47, 0x65, 0x6e, 0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x43, 0x6f, 0x6e, 0x74,
+	0x72, 0x6f, 0x6c, 0x6c, 0x65, 0x72, 0x12, 0x4d, 0x0a, 0x09, 0x47, 0x65, 0x74, 0x53, 0x74, 0x61,
+	0x74, 0x75, 0x73, 0x12, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f,
+	0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x1a, 0x28, 0x2e, 0x62, 0x75,
+	0x69, 0x6c, 0x64, 0x62, 0x61, 0x72, 0x6e, 0x2e, 0x6d, 0x75, 0x6c, 0x74, 0x69, 0x67, 0x65, 0x6e,
+	0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x4d, 0x75, 0x6c, 0x74, 0x69, 0x47, 0x65, 0x6e,
+	0x52, 0x65, 0x70, 0x6c, 0x79, 0x12, 0x55, 0x0a, 0x11, 0x41, 0x63, 0x71, 0x75, 0x69, 0x72, 0x65,
+	0x52, 0x6f, 0x74, 0x61, 0x74, 0x65, 0x4c, 0x6f, 0x63, 0x6b, 0x12, 0x16, 0x2e, 0x67, 0x6f, 0x6f,
+	0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70,
+	0x74, 0x79, 0x1a, 0x28, 0x2e, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x62, 0x61, 0x72, 0x6e, 0x2e, 0x6d,
+	0x75, 0x6c, 0x74, 0x69, 0x67, 0x65, 0x6e, 0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x4d,
+	0x75, 0x6c, 0x74, 0x69, 0x47, 0x65, 0x6e, 0x52, 0x65, 0x70, 0x6c, 0x79, 0x12, 0x55, 0x0a, 0x11,
+	0x52, 0x65, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x52, 0x6f, 0x74, 0x61, 0x74, 0x65, 0x4c, 0x6f, 0x63,
+	0x6b, 0x12, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f,
 	0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x1a, 0x28, 0x2e, 0x62, 0x75, 0x69, 0x6c,
 	0x64, 0x62, 0x61, 0x72, 0x6e, 0x2e, 0x6d, 0x75, 0x6c, 0x74, 0x69, 0x67, 0x65, 0x6e, 0x65, 0x72,
 	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x4d, 0x75, 0x6c, 0x74, 0x69, 0x47, 0x65, 0x6e, 0x52, 0x65,
-	0x70, 0x6c, 0x79, 0x12, 0x43, 0x0a, 0x11, 0x41, 0x63, 0x71, 0x75, 0x69, 0x72, 0x65, 0x52, 0x6f,
-	0x74, 0x61, 0x74, 0x65, 0x4c, 0x6f, 0x63, 0x6b, 0x12, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
-	0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79,
-	0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62,
-	0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x12, 0x43, 0x0a, 0x11, 0x52, 0x65, 0x6c, 0x65,
-	0x61, 0x73, 0x65, 0x52, 0x6f, 0x74, 0x61, 0x74, 0x65, 0x4c, 0x6f, 0x63, 0x6b, 0x12, 0x16, 0x2e,
-	0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e,
-	0x45, 0x6d, 0x70, 0x74, 0x79, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70,
-	0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x12, 0x3a, 0x0a,
-	0x08, 0x44, 0x6f, 0x52, 0x6f, 0x74, 0x61, 0x74, 0x65, 0x12, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67,
-	0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74,
-	0x79, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f,
-	0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x42, 0x3b, 0x5a, 0x39, 0x67, 0x69, 0x74,
-	0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x62, 0x61, 0x72,
-	0x6e, 0x2f, 0x62, 0x62, 0x2d, 0x73, 0x74, 0x6f, 0x72, 0x61, 0x67, 0x65, 0x2f, 0x70, 0x6b, 0x67,
-	0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x6d, 0x75, 0x6c, 0x74, 0x69, 0x67, 0x65, 0x6e, 0x65,
-	0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x70, 0x6c, 0x79, 0x12, 0x4c, 0x0a, 0x08, 0x44, 0x6f, 0x52, 0x6f, 0x74, 0x61, 0x74, 0x65, 0x12,
+	0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75,
+	0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x1a, 0x28, 0x2e, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x62,
+	0x61, 0x72, 0x6e, 0x2e, 0x6d, 0x75, 0x6c, 0x74, 0x69, 0x67, 0x65, 0x6e, 0x65, 0x72, 0x61, 0x74,
+	0x69, 0x6f, 0x6e, 0x2e, 0x4d, 0x75, 0x6c, 0x74, 0x69, 0x47, 0x65, 0x6e, 0x52, 0x65, 0x70, 0x6c,
+	0x79, 0x12, 0x4b, 0x0a, 0x07, 0x44, 0x6f, 0x52, 0x65, 0x73, 0x65, 0x74, 0x12, 0x16, 0x2e, 0x67,
+	0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45,
+	0x6d, 0x70, 0x74, 0x79, 0x1a, 0x28, 0x2e, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x62, 0x61, 0x72, 0x6e,
+	0x2e, 0x6d, 0x75, 0x6c, 0x74, 0x69, 0x67, 0x65, 0x6e, 0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e,
+	0x2e, 0x4d, 0x75, 0x6c, 0x74, 0x69, 0x47, 0x65, 0x6e, 0x52, 0x65, 0x70, 0x6c, 0x79, 0x42, 0x3b,
+	0x5a, 0x39, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x62, 0x75, 0x69,
+	0x6c, 0x64, 0x62, 0x61, 0x72, 0x6e, 0x2f, 0x62, 0x62, 0x2d, 0x73, 0x74, 0x6f, 0x72, 0x61, 0x67,
+	0x65, 0x2f, 0x70, 0x6b, 0x67, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x6d, 0x75, 0x6c, 0x74,
+	0x69, 0x67, 0x65, 0x6e, 0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x62, 0x06, 0x70, 0x72, 0x6f,
+	0x74, 0x6f, 0x33,
 }
 
 var (
@@ -123,25 +230,31 @@ func file_pkg_proto_multigeneration_multigeneration_proto_rawDescGZIP() []byte {
 	return file_pkg_proto_multigeneration_multigeneration_proto_rawDescData
 }
 
-var file_pkg_proto_multigeneration_multigeneration_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_pkg_proto_multigeneration_multigeneration_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_pkg_proto_multigeneration_multigeneration_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_pkg_proto_multigeneration_multigeneration_proto_goTypes = []interface{}{
-	(*MultiGenReply)(nil), // 0: buildbarn.multigeneration.MultiGenReply
-	(*emptypb.Empty)(nil), // 1: google.protobuf.Empty
+	(MultiGenStatus_Value)(0), // 0: buildbarn.multigeneration.MultiGenStatus.Value
+	(*MultiGenStatus)(nil),    // 1: buildbarn.multigeneration.MultiGenStatus
+	(*MultiGenReply)(nil),     // 2: buildbarn.multigeneration.MultiGenReply
+	(*emptypb.Empty)(nil),     // 3: google.protobuf.Empty
 }
 var file_pkg_proto_multigeneration_multigeneration_proto_depIdxs = []int32{
-	1, // 0: buildbarn.multigeneration.ShardedMultiGenerationController.GetIfWantsToRotate:input_type -> google.protobuf.Empty
-	1, // 1: buildbarn.multigeneration.ShardedMultiGenerationController.AcquireRotateLock:input_type -> google.protobuf.Empty
-	1, // 2: buildbarn.multigeneration.ShardedMultiGenerationController.ReleaseRotateLock:input_type -> google.protobuf.Empty
-	1, // 3: buildbarn.multigeneration.ShardedMultiGenerationController.DoRotate:input_type -> google.protobuf.Empty
-	0, // 4: buildbarn.multigeneration.ShardedMultiGenerationController.GetIfWantsToRotate:output_type -> buildbarn.multigeneration.MultiGenReply
-	1, // 5: buildbarn.multigeneration.ShardedMultiGenerationController.AcquireRotateLock:output_type -> google.protobuf.Empty
-	1, // 6: buildbarn.multigeneration.ShardedMultiGenerationController.ReleaseRotateLock:output_type -> google.protobuf.Empty
-	1, // 7: buildbarn.multigeneration.ShardedMultiGenerationController.DoRotate:output_type -> google.protobuf.Empty
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	0, // 0: buildbarn.multigeneration.MultiGenReply.status:type_name -> buildbarn.multigeneration.MultiGenStatus.Value
+	3, // 1: buildbarn.multigeneration.ShardedMultiGenerationController.GetStatus:input_type -> google.protobuf.Empty
+	3, // 2: buildbarn.multigeneration.ShardedMultiGenerationController.AcquireRotateLock:input_type -> google.protobuf.Empty
+	3, // 3: buildbarn.multigeneration.ShardedMultiGenerationController.ReleaseRotateLock:input_type -> google.protobuf.Empty
+	3, // 4: buildbarn.multigeneration.ShardedMultiGenerationController.DoRotate:input_type -> google.protobuf.Empty
+	3, // 5: buildbarn.multigeneration.ShardedMultiGenerationController.DoReset:input_type -> google.protobuf.Empty
+	2, // 6: buildbarn.multigeneration.ShardedMultiGenerationController.GetStatus:output_type -> buildbarn.multigeneration.MultiGenReply
+	2, // 7: buildbarn.multigeneration.ShardedMultiGenerationController.AcquireRotateLock:output_type -> buildbarn.multigeneration.MultiGenReply
+	2, // 8: buildbarn.multigeneration.ShardedMultiGenerationController.ReleaseRotateLock:output_type -> buildbarn.multigeneration.MultiGenReply
+	2, // 9: buildbarn.multigeneration.ShardedMultiGenerationController.DoRotate:output_type -> buildbarn.multigeneration.MultiGenReply
+	2, // 10: buildbarn.multigeneration.ShardedMultiGenerationController.DoReset:output_type -> buildbarn.multigeneration.MultiGenReply
+	6, // [6:11] is the sub-list for method output_type
+	1, // [1:6] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_pkg_proto_multigeneration_multigeneration_proto_init() }
@@ -151,6 +264,18 @@ func file_pkg_proto_multigeneration_multigeneration_proto_init() {
 	}
 	if !protoimpl.UnsafeEnabled {
 		file_pkg_proto_multigeneration_multigeneration_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*MultiGenStatus); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_pkg_proto_multigeneration_multigeneration_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*MultiGenReply); i {
 			case 0:
 				return &v.state
@@ -168,13 +293,14 @@ func file_pkg_proto_multigeneration_multigeneration_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_pkg_proto_multigeneration_multigeneration_proto_rawDesc,
-			NumEnums:      0,
-			NumMessages:   1,
+			NumEnums:      1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_pkg_proto_multigeneration_multigeneration_proto_goTypes,
 		DependencyIndexes: file_pkg_proto_multigeneration_multigeneration_proto_depIdxs,
+		EnumInfos:         file_pkg_proto_multigeneration_multigeneration_proto_enumTypes,
 		MessageInfos:      file_pkg_proto_multigeneration_multigeneration_proto_msgTypes,
 	}.Build()
 	File_pkg_proto_multigeneration_multigeneration_proto = out.File
@@ -195,10 +321,11 @@ const _ = grpc.SupportPackageIsVersion6
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type ShardedMultiGenerationControllerClient interface {
-	GetIfWantsToRotate(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MultiGenReply, error)
-	AcquireRotateLock(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	ReleaseRotateLock(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	DoRotate(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	GetStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MultiGenReply, error)
+	AcquireRotateLock(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MultiGenReply, error)
+	ReleaseRotateLock(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MultiGenReply, error)
+	DoRotate(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MultiGenReply, error)
+	DoReset(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MultiGenReply, error)
 }
 
 type shardedMultiGenerationControllerClient struct {
@@ -209,17 +336,17 @@ func NewShardedMultiGenerationControllerClient(cc grpc.ClientConnInterface) Shar
 	return &shardedMultiGenerationControllerClient{cc}
 }
 
-func (c *shardedMultiGenerationControllerClient) GetIfWantsToRotate(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MultiGenReply, error) {
+func (c *shardedMultiGenerationControllerClient) GetStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MultiGenReply, error) {
 	out := new(MultiGenReply)
-	err := c.cc.Invoke(ctx, "/buildbarn.multigeneration.ShardedMultiGenerationController/GetIfWantsToRotate", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/buildbarn.multigeneration.ShardedMultiGenerationController/GetStatus", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *shardedMultiGenerationControllerClient) AcquireRotateLock(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
+func (c *shardedMultiGenerationControllerClient) AcquireRotateLock(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MultiGenReply, error) {
+	out := new(MultiGenReply)
 	err := c.cc.Invoke(ctx, "/buildbarn.multigeneration.ShardedMultiGenerationController/AcquireRotateLock", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -227,8 +354,8 @@ func (c *shardedMultiGenerationControllerClient) AcquireRotateLock(ctx context.C
 	return out, nil
 }
 
-func (c *shardedMultiGenerationControllerClient) ReleaseRotateLock(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
+func (c *shardedMultiGenerationControllerClient) ReleaseRotateLock(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MultiGenReply, error) {
+	out := new(MultiGenReply)
 	err := c.cc.Invoke(ctx, "/buildbarn.multigeneration.ShardedMultiGenerationController/ReleaseRotateLock", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -236,9 +363,18 @@ func (c *shardedMultiGenerationControllerClient) ReleaseRotateLock(ctx context.C
 	return out, nil
 }
 
-func (c *shardedMultiGenerationControllerClient) DoRotate(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
+func (c *shardedMultiGenerationControllerClient) DoRotate(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MultiGenReply, error) {
+	out := new(MultiGenReply)
 	err := c.cc.Invoke(ctx, "/buildbarn.multigeneration.ShardedMultiGenerationController/DoRotate", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *shardedMultiGenerationControllerClient) DoReset(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MultiGenReply, error) {
+	out := new(MultiGenReply)
+	err := c.cc.Invoke(ctx, "/buildbarn.multigeneration.ShardedMultiGenerationController/DoReset", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -247,47 +383,51 @@ func (c *shardedMultiGenerationControllerClient) DoRotate(ctx context.Context, i
 
 // ShardedMultiGenerationControllerServer is the server API for ShardedMultiGenerationController service.
 type ShardedMultiGenerationControllerServer interface {
-	GetIfWantsToRotate(context.Context, *emptypb.Empty) (*MultiGenReply, error)
-	AcquireRotateLock(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
-	ReleaseRotateLock(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
-	DoRotate(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
+	GetStatus(context.Context, *emptypb.Empty) (*MultiGenReply, error)
+	AcquireRotateLock(context.Context, *emptypb.Empty) (*MultiGenReply, error)
+	ReleaseRotateLock(context.Context, *emptypb.Empty) (*MultiGenReply, error)
+	DoRotate(context.Context, *emptypb.Empty) (*MultiGenReply, error)
+	DoReset(context.Context, *emptypb.Empty) (*MultiGenReply, error)
 }
 
 // UnimplementedShardedMultiGenerationControllerServer can be embedded to have forward compatible implementations.
 type UnimplementedShardedMultiGenerationControllerServer struct {
 }
 
-func (*UnimplementedShardedMultiGenerationControllerServer) GetIfWantsToRotate(context.Context, *emptypb.Empty) (*MultiGenReply, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetIfWantsToRotate not implemented")
+func (*UnimplementedShardedMultiGenerationControllerServer) GetStatus(context.Context, *emptypb.Empty) (*MultiGenReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetStatus not implemented")
 }
-func (*UnimplementedShardedMultiGenerationControllerServer) AcquireRotateLock(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
+func (*UnimplementedShardedMultiGenerationControllerServer) AcquireRotateLock(context.Context, *emptypb.Empty) (*MultiGenReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AcquireRotateLock not implemented")
 }
-func (*UnimplementedShardedMultiGenerationControllerServer) ReleaseRotateLock(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
+func (*UnimplementedShardedMultiGenerationControllerServer) ReleaseRotateLock(context.Context, *emptypb.Empty) (*MultiGenReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReleaseRotateLock not implemented")
 }
-func (*UnimplementedShardedMultiGenerationControllerServer) DoRotate(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
+func (*UnimplementedShardedMultiGenerationControllerServer) DoRotate(context.Context, *emptypb.Empty) (*MultiGenReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DoRotate not implemented")
+}
+func (*UnimplementedShardedMultiGenerationControllerServer) DoReset(context.Context, *emptypb.Empty) (*MultiGenReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DoReset not implemented")
 }
 
 func RegisterShardedMultiGenerationControllerServer(s grpc.ServiceRegistrar, srv ShardedMultiGenerationControllerServer) {
 	s.RegisterService(&_ShardedMultiGenerationController_serviceDesc, srv)
 }
 
-func _ShardedMultiGenerationController_GetIfWantsToRotate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _ShardedMultiGenerationController_GetStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ShardedMultiGenerationControllerServer).GetIfWantsToRotate(ctx, in)
+		return srv.(ShardedMultiGenerationControllerServer).GetStatus(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/buildbarn.multigeneration.ShardedMultiGenerationController/GetIfWantsToRotate",
+		FullMethod: "/buildbarn.multigeneration.ShardedMultiGenerationController/GetStatus",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ShardedMultiGenerationControllerServer).GetIfWantsToRotate(ctx, req.(*emptypb.Empty))
+		return srv.(ShardedMultiGenerationControllerServer).GetStatus(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -346,13 +486,31 @@ func _ShardedMultiGenerationController_DoRotate_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ShardedMultiGenerationController_DoReset_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ShardedMultiGenerationControllerServer).DoReset(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/buildbarn.multigeneration.ShardedMultiGenerationController/DoReset",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ShardedMultiGenerationControllerServer).DoReset(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _ShardedMultiGenerationController_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "buildbarn.multigeneration.ShardedMultiGenerationController",
 	HandlerType: (*ShardedMultiGenerationControllerServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "GetIfWantsToRotate",
-			Handler:    _ShardedMultiGenerationController_GetIfWantsToRotate_Handler,
+			MethodName: "GetStatus",
+			Handler:    _ShardedMultiGenerationController_GetStatus_Handler,
 		},
 		{
 			MethodName: "AcquireRotateLock",
@@ -365,6 +523,10 @@ var _ShardedMultiGenerationController_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DoRotate",
 			Handler:    _ShardedMultiGenerationController_DoRotate_Handler,
+		},
+		{
+			MethodName: "DoReset",
+			Handler:    _ShardedMultiGenerationController_DoReset_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
