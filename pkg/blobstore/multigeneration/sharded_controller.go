@@ -49,23 +49,24 @@ func NewShardedMultiGenerationController(clients []mg_proto.ShardedMultiGenerati
 		tick := time.NewTicker(time.Duration(x.timeInterval * uint64(time.Second)))
 		for {
 			<-tick.C
-			x.coordinateRotations()
+			x.check()
 		}
 	}()
 	return &x
 }
 
-func (c *shardedMultiGenerationController) coordinateRotations() {
+func (c *shardedMultiGenerationController) check() {
 
 	// check if clients need to rotate with a timeout equal to the next inspection time
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(c.timeInterval)*time.Second)
 	defer cancel()
-	mustRotate, err := c.checkRotate(ctx)
+	status, err := c.checkStatus(ctx)
 	if err != nil {
 		log.Printf("Could not check all clientes: %s.\nRetry later\n", err)
 		return
 	}
-	if !mustRotate {
+
+	if status == mg_proto.MultiGenStatus_OK {
 		return
 	}
 	// we don't want a timeout for acquiring and releasing the locks
@@ -82,28 +83,52 @@ func (c *shardedMultiGenerationController) coordinateRotations() {
 		log.Printf("Could not acquire all the rotateLocks, retry later.\n")
 		return
 	}
-	err = c.callRotate(ctx)
-	if err != nil {
-		log.Printf("Could not perform complete rotation: %v\n", err)
-		// TODO: try to recover by forcing a reset of the clients
-		return
+
+	if status == mg_proto.MultiGenStatus_ROTATION_NEEDED {
+		err = c.callRotate(ctx)
+		if err == nil {
+			//all good
+			return
+		} else {
+			log.Printf("Could not perform complete rotation: %v. retrying later\n", err)
+		}
 	}
+	if err != nil || status == mg_proto.MultiGenStatus_RESET_NEEDED {
+		log.Printf("resetting")
+		c.callReset(ctx)
+	}
+
 }
 
-func (c *shardedMultiGenerationController) checkRotate(ctx context.Context) (bool, error) {
+func (c *shardedMultiGenerationController) callReset(ctx context.Context) (mg_proto.MultiGenStatus_Value, error) {
 	// log.Printf("call checkRotate\n")
 	for _, client := range c.clients {
-		reply, err := client.GetIfWantsToRotate(ctx, request)
+		reply, err := client.DoReset(ctx, request)
 		if err != nil {
-			return false, err
+			return mg_proto.MultiGenStatus_INTERNAL_ERROR, err
 		}
-		if reply.Response {
+		if reply.Status != mg_proto.MultiGenStatus_OK {
 			// only one positive response is sufficient
-			return true, nil
+			return reply.Status, nil
+		}
+	}
+	return mg_proto.MultiGenStatus_OK, nil
+}
+
+func (c *shardedMultiGenerationController) checkStatus(ctx context.Context) (mg_proto.MultiGenStatus_Value, error) {
+	// log.Printf("call checkRotate\n")
+	for _, client := range c.clients {
+		reply, err := client.GetStatus(ctx, request)
+		if err != nil {
+			return mg_proto.MultiGenStatus_INTERNAL_ERROR, err
+		}
+		if reply.Status != mg_proto.MultiGenStatus_OK {
+			// only one positive response is sufficient
+			return reply.Status, nil
 		}
 	}
 	// no client needs to rotate and all RPCs went fine
-	return false, nil
+	return mg_proto.MultiGenStatus_OK, nil
 }
 
 func (c *shardedMultiGenerationController) releaseAcquiredLocks(ctx context.Context, acquiredLocks []bool) error {

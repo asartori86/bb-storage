@@ -6,24 +6,47 @@ import "google/protobuf/empty.proto";
 option go_package = "github.com/buildbarn/bb-storage/pkg/proto/multigeneration";
 
 service ShardedMultiGenerationController {
-    rpc GetIfWantsToRotate(google.protobuf.Empty)
+    rpc GetStatus(google.protobuf.Empty)
         returns (MultiGenReply);
     
     rpc AcquireRotateLock(google.protobuf.Empty)
-      returns (google.protobuf.Empty);
+      returns (MultiGenReply);
 
     // If the controller cannot lock the rotateLocks of all the shards, it may
     // call this function.
     rpc ReleaseRotateLock(google.protobuf.Empty)
-      returns (google.protobuf.Empty);
+      returns (MultiGenReply);
 
-    // requirements: 
+    // requirements:
     // 1. rotateLock has been already acquired
     // 2. rotateLock will be unlocked by this function
     rpc DoRotate(google.protobuf.Empty)
-      returns (google.protobuf.Empty);
+      returns (MultiGenReply);
+
+    // requirements:
+    // 1. rotateLock has been already acquired
+    // 2. rotateLock will be unlocked by this function
+    rpc DoReset(google.protobuf.Empty)
+      returns (MultiGenReply);
+    }
+
+
+  message MultiGenStatus{
+    enum Value { 
+      // All good
+      OK = 0;
+
+      // Current generation's size exceeds the threshold
+      ROTATION_NEEDED = 1;
+
+      // Tree invariant does not hold anymore, please reset all the backends
+      RESET_NEEDED = 2;
+
+      // Something bad happened
+      INTERNAL_ERROR = 3;
+    }
   }
 
   message MultiGenReply{
-    bool response = 1;
+    MultiGenStatus.Value status = 1;
   }

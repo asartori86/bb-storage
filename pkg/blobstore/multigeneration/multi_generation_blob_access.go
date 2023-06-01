@@ -37,7 +37,7 @@ type MultiGenerationBlobAccess struct {
 	generations              []*singleGeneration
 	autonomous               bool
 	semaphore                chan struct{}
-	wantsToRotate            bool
+	status                   mg_proto.MultiGenStatus_Value
 	lastRotationTimeStamp    int64
 }
 
@@ -104,7 +104,7 @@ func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64,
 		rotateLock:               sync.RWMutex{},
 		generations:              generations,
 		autonomous:               autonomous,
-		wantsToRotate:            false,
+		status:                   mg_proto.MultiGenStatus_OK,
 		lastRotationTimeStamp:    time.Now().Unix(),
 	}
 	if autonomous {
@@ -169,9 +169,8 @@ func (ba *MultiGenerationBlobAccess) getFromGen(hash string, gen uint32) ([]byte
 			}
 		}
 	}
-	log.Panicf("%s should be present in cas but it is missing\n", hash)
-	// we will never reach this, since log.Panicf will call panic()
-	// but the compiler needs this anyway
+	log.Printf("%s should be present in cas but it is missing\n", hash)
+	ba.status = mg_proto.MultiGenStatus_RESET_NEEDED
 	return nil, 0
 }
 
@@ -240,6 +239,7 @@ func (ba *MultiGenerationBlobAccess) Get(ctx context.Context, dgst digest.Digest
 		if ba.generations[i].has(hash) {
 			dat, gen := ba.getFromGen(hash, i)
 			if dat == nil {
+				ba.rotateLock.RUnlock()
 				return buffer.NewBufferFromError(fmt.Errorf("%s could not be retrieved from cas: has_gen %d, got nil from %d", dgst.String(), i, gen))
 			}
 			go ba.upstream(toBeCopied{idx: gen, hash: hash})
@@ -273,7 +273,6 @@ func (ba *MultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Dige
 	var err error
 	delay := 1 * time.Second
 	for i := 0; i < 5; i++ {
-		log.Printf("Put: %#v into generation %d - trial %d", digest, idx, i)
 		err = ba.generations[idx].put(ctx, digest, b)
 		if err == nil {
 			break
@@ -332,7 +331,15 @@ func (ba *MultiGenerationBlobAccess) rotate() {
 	log.Printf("rotated indexes %v\n", ba.indexes)
 
 }
+
 func (ba *MultiGenerationBlobAccess) GetCapabilities(ctx context.Context, instanceName digest.InstanceName) (*remoteexecution.ServerCapabilities, error) {
+	// x:=remoteexecution.ServerCapabilities{
+	// 	CacheCapabilities:     &remoteexecution.CacheCapabilities{},
+	// 	ExecutionCapabilities: &remoteexecution.ExecutionCapabilities{},
+	// 	DeprecatedApiVersion:  &semver.SemVer{},
+	// 	LowApiVersion:         &semver.SemVer{},
+	// 	HighApiVersion:        &semver.SemVer{},
+	// }
 	return nil, nil
 }
 
@@ -362,7 +369,7 @@ func (ba *MultiGenerationBlobAccess) maybeRotate() {
 
 	size := ba.generations[currentIdx].size()
 	checkTime := time.Now().Unix()
-	log.Printf("%s --> %s  [threshold = %s]\n", ba.generations[currentIdx].dir, prettyPrintSize(size), prettyPrintSize(ba.minimumRotationSizeBytes))
+	log.Printf("%s --> %s  [threshold = %s], status = %#v\n", ba.generations[currentIdx].dir, prettyPrintSize(size), prettyPrintSize(ba.minimumRotationSizeBytes), ba.status)
 	if size >= ba.minimumRotationSizeBytes {
 		ba.rotateLock.Lock()
 		defer ba.rotateLock.Unlock()
@@ -377,7 +384,7 @@ func (ba *MultiGenerationBlobAccess) maybeRotate() {
 				ba.rotate()
 			} else {
 				// just set a flag. the controller will handle it
-				ba.wantsToRotate = true
+				ba.status = mg_proto.MultiGenStatus_ROTATION_NEEDED
 			}
 		}
 	}
@@ -385,29 +392,38 @@ func (ba *MultiGenerationBlobAccess) maybeRotate() {
 
 // implement the ShardedMultiGenerationControllerServer interface
 
-func (c *MultiGenerationBlobAccess) GetIfWantsToRotate(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
+func (c *MultiGenerationBlobAccess) GetStatus(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
 	// log.Printf("got request for GetIfWantsToRotate\n")
-	return &mg_proto.MultiGenReply{Response: c.wantsToRotate}, nil
+	return &mg_proto.MultiGenReply{Status: c.status}, nil
 }
 
-func (c *MultiGenerationBlobAccess) AcquireRotateLock(ctx context.Context, in *emptypb.Empty) (*emptypb.Empty, error) {
-	log.Printf("got request for AcquireRotateLock\n")
+func (c *MultiGenerationBlobAccess) AcquireRotateLock(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
+	log.Printf("call acquire rotate lock")
 	c.rotateLock.Lock()
-	return &emptypb.Empty{}, nil
+	log.Printf("call acquire rotate lock---acquired")
+	return &mg_proto.MultiGenReply{Status: mg_proto.MultiGenStatus_OK}, nil
 }
 
-func (c *MultiGenerationBlobAccess) ReleaseRotateLock(ctx context.Context, in *emptypb.Empty) (*emptypb.Empty, error) {
-	log.Printf("got request for ReleaseRotateLock\n")
+func (c *MultiGenerationBlobAccess) ReleaseRotateLock(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
 	c.rotateLock.Unlock()
-	return &emptypb.Empty{}, nil
+	return &mg_proto.MultiGenReply{Status: mg_proto.MultiGenStatus_OK}, nil
 }
 
-func (c *MultiGenerationBlobAccess) DoRotate(ctx context.Context, in *emptypb.Empty) (*emptypb.Empty, error) {
-	log.Printf("got request for DoRotate\n")
-	defer c.rotateLock.Unlock()
+func (c *MultiGenerationBlobAccess) DoRotate(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
 	next := c.indexToBeDeleted()
-	c.generations[next].reset()
 	c.rotate()
-	c.wantsToRotate = false
-	return &emptypb.Empty{}, nil
+	c.rotateLock.Unlock()
+	c.generations[next].reset()
+	c.status = mg_proto.MultiGenStatus_OK
+	return &mg_proto.MultiGenReply{Status: c.status}, nil
+}
+
+func (c *MultiGenerationBlobAccess) DoReset(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
+	log.Printf("Resetting the whole cache")
+	for i := range c.indexes {
+		c.generations[i].reset()
+	}
+	c.rotateLock.Unlock()
+	c.status = mg_proto.MultiGenStatus_OK
+	return &mg_proto.MultiGenReply{Status: c.status}, nil
 }

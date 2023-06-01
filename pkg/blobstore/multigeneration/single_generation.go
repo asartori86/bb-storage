@@ -144,7 +144,6 @@ func (c *singleGeneration) put(ctx context.Context, digest digest.Digest, b buff
 			hex.EncodeToString(sum),
 			hex.EncodeToString(expectedHash))
 	}
-	log.Printf("added %s to %s", digest, c.dir)
 	i := c.shardIdx(hash)
 	c.shards[i].add(hash)
 	return nil

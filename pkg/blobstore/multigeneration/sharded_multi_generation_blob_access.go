@@ -94,7 +94,6 @@ func (m *ShardedMultiGenerationBlobAccess) checkCompleteness(ctx context.Context
 
 func (m *ShardedMultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {
 	hash := digest.GetHashString()
-	log.Printf("ShardedPut: %#v, %v, %v", digest, hash, justbuild.IsJustbuildTree(hash))
 	i := FNV(hash, m.nShards)
 
 	if emptyblobs.IsEmptyBlob(hash) {
