@@ -167,22 +167,18 @@ func (c *singleGeneration) uplink(h string, oldDir string) {
 }
 
 func (c *singleGeneration) reset() {
+	c.mutex.Lock()
 	c.initShards()
-	go func() {
-		c.mutex.RLock()
-		entries, err := os.ReadDir(c.dir)
-		c.mutex.RUnlock()
-		if err != nil {
-			log.Panicf("Unable to access directory %s", c.dir)
-		}
-		c.mutex.Lock()
-		for _, f := range entries {
-			name := filepath.Join(c.dir, f.Name())
-			log.Printf("gc evicted %s", name)
-			os.RemoveAll(name)
-		}
-		c.mutex.Unlock()
-	}()
+	entries, err := os.ReadDir(c.dir)
+	if err != nil {
+		log.Panicf("Unable to access directory %s", c.dir)
+	}
+	for _, f := range entries {
+		name := filepath.Join(c.dir, f.Name())
+		log.Printf("gc evicted %s", name)
+		os.RemoveAll(name)
+	}
+	c.mutex.Unlock()
 }
 
 func (c *singleGeneration) get(hash string) ([]byte, error) {
