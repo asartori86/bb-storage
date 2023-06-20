@@ -955,31 +955,27 @@ message WithLabelsBlobAccessConfiguration {
   map<string, BlobAccessConfiguration> labels = 2;
 }
 
- // It is recommended to be used when relying on the justbuild remote
- // protocol.
+ // It is recommended to be used when relying on the justbuild remote protocol.
  //
- // One of the key aspects of the justbuild remote protocol
- // with respect to REv2 is the notion of a tree. In particular, the
- // justbuild remote protocol assumes that if the tree blob is present
- // in CAS, all the recursively referenced objects are also
- // present. The cache is organized into a number of directories set
- // by n_generations. Each directory can be referred to as a
- // "generation". The generations are created under the root_dir
- // directory. Only one directory is considered as "current
- // generation", the newest one. When a blob is added to the CAS, it
- // is stored inside the current generation. Every
- // rotation_interval_seconds seconds, the size of the current
- // generation is checked. If it is bigger than the
- // minimum_rotation_size_bytes, a rotation is performed: the content
- // of the oldest generation is removed, and it becomes the new
- // current generation. When the existence of a blob is requested in
- // the CAS (by calling the FindMissing or Get), if the blob is not
- // found in the current generation, the older generations are
- // checked, honoring the order of the rotation: second-to-newest,
- // third-to-newest, etc. If the blob is found in one of the older
- // generations, that blob is "upstreamed" to the current
- // generation. If the requested blob is a justbuild tree, all the
- // recursively referenced objects are also upstreamed.
+ // One of the key aspects of the justbuild remote protocol with respect to REv2
+ // is the notion of a tree. In particular, the justbuild remote protocol
+ // assumes that if the tree blob is present in CAS, all the recursively
+ // referenced objects are also present. The cache is organized into a number of
+ // directories set by n_generations. Each directory can be referred to as a
+ // "generation". The generations are created under the root_dir directory. Only
+ // one directory is considered as "current generation", the newest one. When a
+ // blob is added to the CAS, it is stored inside the current generation. Every
+ // rotation_interval_seconds seconds, the size of the current generation is
+ // checked. If it is bigger than the minimum_rotation_size_bytes, a rotation is
+ // performed: the content of the oldest generation is removed, and it becomes
+ // the new current generation. When the existence of a blob is requested in the
+ // CAS (by calling the FindMissing or Get), if the blob is not found in the
+ // current generation, the older generations are checked, honoring the order of
+ // the rotation: second-to-newest, third-to-newest, etc. If the blob is found
+ // in one of the older generations, that blob is "upstreamed" to the current
+ // generation BEFORE returning it. If the requested blob is a tree, all the
+ // recursively referenced objects are also upstreamed (leaves-first) berfore
+ // returning.
  message MultiGenerationBlobAccessConfiguration {
   // Number of generations. Must be greater than 1
   uint32 n_generations = 1;
@@ -998,25 +994,13 @@ message WithLabelsBlobAccessConfiguration {
   // Number of shards used for the in-memory cache by each single generation.
   uint32 n_shards_single_generation = 6;
 
-  // This option has an effect only when the justbuild remote protocol is used.
-  // if set to true, each time a tree is fetched it is also traversed to
-  // recursively uplink all the referenced objects.
-  //
-  // Set to false if it is used as backend for the ShardedMultiGeneration since
-  // part of the tree can be on a different shard, so the traversal must be
-  // orchestrated at an higher level.
-  // When used as backend for the ShardedMultiGeneration, this boolean is used
-  // to discriminate if a multi-generation shard can rotate without syncronization
-  // with the other shards.
-  bool autonomous = 7;
-
-  // The maximum number of concurrent goroutines spawned in a tree
-  // traversal while upstreaming from an older generation. Even though
-  // the upstream is performed in the background, allowing a
-  // considerable number of goroutines can slow down the cache.
-  //
-  // This option has no affect if internal_tree_traversal is set to false
-  uint32 max_tree_traversal_concurrency = 8;
+  message Shard{
+    BlobAccessConfiguration backend = 1;
+  }
+  // A tree can be split across all the MultiGeneration shards, therefore, in
+  // order to check the completeness of a tree, the other instances must be
+  // queried as well.
+  repeated Shard crew = 9;
 }
 
 // It is recommended to be used when relying on the justbuild remote
@@ -1043,12 +1027,6 @@ message ShardedMultiGenerationBlobAccessConfiguration{
   // Shards to which requests are routed.
   repeated Shard Shards = 1;
   
-  // Maximum number of concurrent goroutines spawned in a tree
-  // traversal while upstreaming from an older generation. Even though
-  // the upstream is performed in the background, allowing a
-  // considerable number of goroutines can slow down the cache.
-  uint32 max_tree_traversal_concurrency = 2;
-
   // Only used by the scheduler. Shards will be queried if they need to rotate
   // according to this parameter. It is recommened to set it to a fraction of
   // MultiGenerationBlobAccessConfiguration.rotation_interval_seconds.

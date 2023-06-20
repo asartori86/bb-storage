@@ -5,150 +5,101 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"math/rand"
 	"path/filepath"
 	"sync"
 	"time"
 
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
-	"github.com/buildbarn/bb-storage/pkg/auth"
+	"github.com/buildbarn/bb-storage/pkg/blobstore"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/buffer"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/slicing"
 	"github.com/buildbarn/bb-storage/pkg/digest"
 	emptyblobs "github.com/buildbarn/bb-storage/pkg/empty_blobs"
 	"github.com/buildbarn/bb-storage/pkg/justbuild"
-	bb_storage "github.com/buildbarn/bb-storage/pkg/proto/configuration/bb_storage"
-	pb "github.com/buildbarn/bb-storage/pkg/proto/configuration/blobstore"
 	mg_proto "github.com/buildbarn/bb-storage/pkg/proto/multigeneration"
 	"github.com/buildbarn/bb-storage/pkg/util"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type toBeCopied struct {
 	idx  uint32
-	hash string
+	dgst digest.Digest
 }
 
-type MultiGenerationBlobAccess struct {
-	minimumRotationSizeBytes uint64
-	timeInterval             uint64
-	indexes                  []uint32
-	rotateLock               sync.RWMutex
-	generations              []*singleGeneration
-	autonomous               bool
-	semaphore                chan struct{}
-	status                   mg_proto.MultiGenStatus_Value
-	lastRotationTimeStamp    int64
+var MultiGenerationBlobAccessPtr *multiGenerationBlobAccess
+
+type multiGenerationBlobAccess struct {
+	minimumRotationSizeBytes        uint64
+	timeIntervalBetweenComputeSizes uint64
+	indexes                         []uint32
+	rotateLock                      sync.RWMutex
+	statusLock                      sync.RWMutex
+	generations                     []*singleGeneration
+	status                          mg_proto.MultiGenStatus_Value
+	lastRotationTimeStamp           int64
+	crew                            []blobstore.BlobAccess
+	nShards                         uint32
 }
 
-func NewMultiGenerationBlobAccessFromConfiguration(conf *bb_storage.ScannableBlobAccessConfiguration) (*MultiGenerationBlobAccess, []auth.Authorizer, error) {
-	getAuthorizer, err := auth.DefaultAuthorizerFactory.NewAuthorizerFromConfiguration(conf.GetAuthorizer)
-	if err != nil {
-		return nil, nil, util.StatusWrap(err, "Failed to create Get() authorizer")
-	}
-	putAuthorizer, err := auth.DefaultAuthorizerFactory.NewAuthorizerFromConfiguration(conf.PutAuthorizer)
-	if err != nil {
-		return nil, nil, util.StatusWrap(err, "Failed to create Put() authorizer")
-	}
-	findMissingAuthorizer, err := auth.DefaultAuthorizerFactory.NewAuthorizerFromConfiguration(conf.FindMissingAuthorizer)
-	if err != nil {
-		return nil, nil, util.StatusWrap(err, "Failed to create FindMissing() authorizer")
-	}
-
-	switch backend := conf.Backend.Backend.(type) {
-	case *pb.BlobAccessConfiguration_MultiGeneration:
-		return NewMultiGenerationBlobAccess(backend.MultiGeneration.NGenerations,
-				backend.MultiGeneration.MinimumRotationSizeBytes,
-				backend.MultiGeneration.RotationIntervalSeconds,
-				backend.MultiGeneration.RootDir,
-				backend.MultiGeneration.MaxTreeTraversalConcurrency,
-				backend.MultiGeneration.NShardsSingleGeneration,
-				backend.MultiGeneration.Autonomous),
-			[]auth.Authorizer{getAuthorizer, putAuthorizer, findMissingAuthorizer},
-			nil
-
-	}
-	return nil, nil, nil
-}
-
-func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64, timeInterval uint64, rootDir string, treeConcurrency uint32, nShards uint32, autonomous bool) *MultiGenerationBlobAccess {
+func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64, timeInterval uint64,
+	rootDir string, nShardsSingleGen uint32, crew []blobstore.BlobAccess) *multiGenerationBlobAccess {
 	if nGenerations <= 1 {
 		log.Panicf("ERROR: multiGenerationBlobAccess requires generations > 1 but got %d", nGenerations)
 	}
-	if autonomous {
-		if treeConcurrency < 1 {
-			log.Panicf("ERROR: multiGenerationBlobAccess requires tree_traversal_concurrency > 0 but got %d", treeConcurrency)
-		}
-	}
-	if nShards < 1 {
-		log.Panicf("ERROR: multiGenerationBlobAccess requires n_shards_single_generation > 0 but got %d", nShards)
+
+	if nShardsSingleGen < 1 {
+		log.Panicf("ERROR: multiGenerationBlobAccess requires n_shards_single_generation > 0 but got %d", nShardsSingleGen)
 	}
 
 	var indexes = make([]uint32, nGenerations)
 	var generations = make([]*singleGeneration, nGenerations)
-	var timeStamps = make([]time.Time, nGenerations)
 	var n sync.WaitGroup
 	for i := uint32(0); i < nGenerations; i++ {
 		n.Add(1)
 		go func(i uint32) {
 			defer n.Done()
 			indexes[i] = i
-			generations[i], timeStamps[i] = newSingleGeneration(filepath.Join(rootDir, fmt.Sprintf("gen-%d", i)), i, nShards)
+			generations[i] = newSingleGeneration(filepath.Join(rootDir, fmt.Sprintf("gen-%d", i)), i, nShardsSingleGen)
 		}(i)
 	}
 	n.Wait()
-	ba := MultiGenerationBlobAccess{
-		minimumRotationSizeBytes: rotationSizeBytes,
-		timeInterval:             timeInterval,
-		indexes:                  indexes,
-		rotateLock:               sync.RWMutex{},
-		generations:              generations,
-		autonomous:               autonomous,
-		status:                   mg_proto.MultiGenStatus_OK,
-		lastRotationTimeStamp:    time.Now().Unix(),
+	ba := multiGenerationBlobAccess{
+		nShards:                         uint32(len(crew)),
+		minimumRotationSizeBytes:        rotationSizeBytes,
+		timeIntervalBetweenComputeSizes: timeInterval,
+		indexes:                         indexes,
+		rotateLock:                      sync.RWMutex{},
+		statusLock:                      sync.RWMutex{},
+		generations:                     generations,
+		status:                          mg_proto.MultiGenStatus_OK,
+		lastRotationTimeStamp:           time.Now().Unix(),
+		crew:                            crew,
 	}
-	if autonomous {
-		ba.semaphore = make(chan struct{}, treeConcurrency)
-	}
-
-	// // find most recent directory
-	// var mostRecentTime time.Time
-	// idxMostRecent := 0
-	// for i, t := range timeStamps {
-	// 	if t.Unix() > mostRecentTime.Unix() {
-	// 		mostRecentTime = t
-	// 		idxMostRecent = i
-	// 	}
-	// }
-	// for {
-	// 	if ba.currentIndex() == uint32(idxMostRecent) {
-	// 		break
-	// 	}
-	// 	ba.rotate()
-	// }
 
 	// spawn goroutine that will periodically check the size of the current generation
 	// if the size is above the given threshold generations will rotate
 	go func() {
-		tick := time.NewTicker(time.Duration(ba.timeInterval * uint64(time.Second)))
+		tick := time.NewTicker(time.Duration(ba.timeIntervalBetweenComputeSizes * uint64(time.Second)))
 		for {
 			<-tick.C
 			ba.maybeRotate()
 		}
 	}()
+	MultiGenerationBlobAccessPtr = &ba
 	return &ba
 }
 
-func (ba *MultiGenerationBlobAccess) indexToBeDeleted() uint32 {
+func (ba *multiGenerationBlobAccess) indexToBeDeleted() uint32 {
 	n := len(ba.indexes)
 	return ba.indexes[n-1]
 }
 
-func (ba *MultiGenerationBlobAccess) currentIndex() uint32 {
+func (ba *multiGenerationBlobAccess) currentIndex() uint32 {
 	return ba.indexes[0]
 }
 
-func (ba *MultiGenerationBlobAccess) getFromGen(hash string, gen uint32) ([]byte, uint32) {
+func (ba *multiGenerationBlobAccess) getFromGen(hash string, gen uint32) ([]byte, uint32) {
 	//assumption: rotate cannot happen concurrently
 	if ba.generations[gen].has(hash) {
 		data, err := ba.generations[gen].get(hash)
@@ -170,158 +121,208 @@ func (ba *MultiGenerationBlobAccess) getFromGen(hash string, gen uint32) ([]byte
 		}
 	}
 	log.Printf("%s should be present in cas but it is missing\n", hash)
+	ba.statusLock.Lock()
+	defer ba.statusLock.Unlock()
 	ba.status = mg_proto.MultiGenStatus_RESET_NEEDED
 	return nil, 0
 }
 
-func (ba *MultiGenerationBlobAccess) traverse(treeHash string, gen uint32, wg *sync.WaitGroup) {
-	defer wg.Done()
-	if !ba.autonomous {
-		return
-	}
-	ba.semaphore <- struct{}{}
-	defer func() {
-		<-ba.semaphore
-	}()
-	currentIdx := ba.currentIndex()
-	data, g := ba.getFromGen(treeHash, gen)
-	hashes, types, _, err := justbuild.GetTaggedHashes(data)
-	if err != nil {
-		log.Printf("getAllHashes %s\n\n", err)
-		return
-	}
-	for i, hash := range hashes {
-		if emptyblobs.IsEmptyBlob(hash) {
-			continue
-		}
-		if types[i] == justbuild.Tree {
-			wg.Add(1)
-			go ba.traverse(hash, g, wg)
-		}
-		if !ba.generations[g].has(hash) {
-			for _, j := range ba.indexes {
-				if ba.generations[j].has(hash) {
-					g = j
-					break
-				}
-			}
-		}
-		ba.generations[currentIdx].uplink(hash, ba.generations[g].dir)
-	}
-}
-
-func (ba *MultiGenerationBlobAccess) upstream(srcs ...toBeCopied) {
-	defer ba.rotateLock.RUnlock()
-	currentIdx := ba.currentIndex()
-	traverseWG := sync.WaitGroup{}
-	for _, src := range srcs {
-		idx, hash := src.idx, src.hash
-		if justbuild.IsJustbuildTree(hash) {
-			traverseWG.Add(1)
-			go ba.traverse(hash, idx, &traverseWG)
-		}
-		if idx == currentIdx {
-			continue
-		}
-		ba.generations[currentIdx].uplink(hash, ba.generations[idx].dir)
-	}
-	traverseWG.Wait()
-}
-
-func (ba *MultiGenerationBlobAccess) Get(ctx context.Context, dgst digest.Digest) buffer.Buffer {
+func (ba *multiGenerationBlobAccess) Get(ctx context.Context, dgst digest.Digest) buffer.Buffer {
 	hash := dgst.GetHashString()
 	if emptyblobs.IsEmptyBlob(hash) {
 		return buffer.NewValidatedBufferFromByteSlice(nil)
 	}
 	ba.rotateLock.RLock()
-
+	defer ba.rotateLock.RUnlock()
+	currentIdx := ba.currentIndex()
 	for _, i := range ba.indexes {
 		if ba.generations[i].has(hash) {
 			dat, gen := ba.getFromGen(hash, i)
 			if dat == nil {
-				ba.rotateLock.RUnlock()
 				return buffer.NewBufferFromError(fmt.Errorf("%s could not be retrieved from cas: has_gen %d, got nil from %d", dgst.String(), i, gen))
 			}
-			go ba.upstream(toBeCopied{idx: gen, hash: hash})
+			if gen != currentIdx {
+				if justbuild.IsJustbuildTree(hash) {
+					err := ba.checkCompleteness(ctx, dgst, dat)
+					if err != nil {
+						return buffer.NewBufferFromError(err)
+					}
+				}
+				ba.generations[currentIdx].uplink(hash, ba.generations[gen].dir)
+			}
 			return buffer.NewValidatedBufferFromByteSlice(dat)
 		}
 	}
-	ba.rotateLock.RUnlock()
 	return buffer.NewBufferFromError(fmt.Errorf("%s could not be retrieved from cas", dgst.String()))
 }
 
-func (ba *MultiGenerationBlobAccess) GetFromComposite(ctx context.Context, parentDigest, childDigest digest.Digest, slicer slicing.BlobSlicer) buffer.Buffer {
-	ba.rotateLock.RLock()
+func (ba *multiGenerationBlobAccess) GetFromComposite(ctx context.Context, parentDigest, childDigest digest.Digest, slicer slicing.BlobSlicer) buffer.Buffer {
 	parentHash := parentDigest.GetHashString()
 	childHash := childDigest.GetHashString()
-
 	log.Printf("COMPOSITE: parent=%s   child=%s\n", parentHash, childHash)
-	// upstram parent
-	go func() {
-		ctx := context.Background()
-		ctx, cancel := context.WithCancel(ctx)
-		ba.FindMissing(ctx, parentDigest.ToSingletonSet().RemoveEmptyBlob())
-		ba.rotateLock.RUnlock()
-		cancel()
-	}()
+	// check if parent is available
+	missing, err := ba.FindMissing(ctx, parentDigest.ToSingletonSet().RemoveEmptyBlob())
+	if err != nil {
+		return buffer.NewBufferFromError(err)
+	}
+	if !missing.Empty() {
+		buffer.NewBufferFromError(fmt.Errorf("Parent digest %#v not found in CAS", parentDigest))
+	}
 	return ba.Get(ctx, childDigest)
 }
 
-func (ba *MultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {
-	ba.rotateLock.RLock()
-	idx := ba.currentIndex()
-	var err error
-	delay := 1 * time.Second
-	for i := 0; i < 5; i++ {
-		err = ba.generations[idx].put(ctx, digest, b)
-		if err == nil {
-			break
-		}
-		log.Printf("Put: %#v into generation %d - trial %d got %s", digest, idx, i, err)
-		time.Sleep(delay + time.Duration(10*rand.Float32()*float32(time.Second)))
-		delay *= 2
-	}
+func DirectDependencySet(bytes []byte, dgst digest.Digest) (digest.Set, error) {
+	hashes, _, _, err := justbuild.GetTaggedHashes(bytes)
 	if err != nil {
-		ba.rotateLock.RUnlock()
+		log.Printf("Failed to compute tagged hashes for tree %#v", dgst)
+		return digest.EmptySet, err
+	}
+	setBuilder := digest.NewSetBuilder()
+	instName := dgst.GetInstanceName().String()
+	for _, h := range hashes {
+		curDgst := digest.MustNewDigest(instName, dgst.GetDigestFunction().GetEnumValue(), h, 0 /*sizeBytes*/)
+		setBuilder.Add(curDgst)
+	}
+	return setBuilder.Build(), nil
+}
+
+func (ba *multiGenerationBlobAccess) checkLeaves(ctx context.Context, dgst digest.Digest, bytes []byte) error {
+	// make sure all leaves are present in the current generation
+	// if at least one leaf is missing it will error out
+	leaves, err := DirectDependencySet(bytes, dgst)
+	if err != nil {
 		return err
 	}
-	hash := digest.GetHashString()
-	if ba.autonomous && justbuild.IsJustbuildTree(hash) {
-		// guarantees that the tree root and all its children are totally
-		// contained in one single generation
-		go ba.upstream(toBeCopied{
-			idx:  idx,
-			hash: hash,
-		})
-	} else {
-		ba.rotateLock.RUnlock()
+	// partition digests by shard
+	digestsPerBackend := make([]digest.SetBuilder, 0, ba.nShards)
+	for range ba.crew {
+
+		digestsPerBackend = append(digestsPerBackend, digest.NewSetBuilder())
+	}
+	for _, blobDigest := range leaves.Items() {
+		i := FNV(blobDigest.GetHashString(), ba.nShards)
+		digestsPerBackend[i].Add(blobDigest)
+	}
+
+	missingPerBackend := make([]digest.Set, 0, ba.nShards)
+
+	// asynchronously call FindMissing() on the shards.
+	// each FindMissing guarantees that if the digest is present, it is also
+	// already in the youngest generation
+	group, ctxWithCancel := errgroup.WithContext(ctx)
+	for idxIter, digestsIter := range digestsPerBackend {
+		// need local variables to be passed to the go subroutine
+		idx, digests := idxIter, digestsIter
+		if digests.Length() > 0 {
+			missingPerBackend = append(missingPerBackend, digest.EmptySet)
+			missingOut := &missingPerBackend[len(missingPerBackend)-1]
+			group.Go(func() error {
+				missing, err := ba.crew[idx].FindMissing(ctxWithCancel, digests.Build())
+				if err != nil {
+					return util.StatusWrapf(err, "Shard %d", idx)
+				}
+				*missingOut = missing
+				return nil
+			})
+		}
+	}
+
+	// Recombine results.
+	if err := group.Wait(); err != nil {
+		return err
+	}
+
+	missing := digest.GetUnion(missingPerBackend)
+
+	if !missing.Empty() {
+		return fmt.Errorf("Incomplete tree detected %#v: missing leaves are: %#v", dgst, missing)
 	}
 	return nil
 }
 
-func (ba *MultiGenerationBlobAccess) FindMissing(ctx context.Context, digests digest.Set) (digest.Set, error) {
-	currentDigests := digests
-	upstream := []toBeCopied{}
+func (ba *multiGenerationBlobAccess) checkCompleteness(ctx context.Context, tree digest.Digest, treeBuf []byte) error {
+	// the presence of tree has already been checked, so we just check the leaves before uplinking it
+	return ba.checkLeaves(ctx, tree, treeBuf)
+}
+
+func (ba *multiGenerationBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {
+	hash := digest.GetHashString()
+
+	if emptyblobs.IsEmptyBlob(hash) {
+		return nil
+	}
 	ba.rotateLock.RLock()
+	defer ba.rotateLock.RUnlock()
+
+	idx := ba.currentIndex()
+
+	// simple blob
+	if !justbuild.IsJustbuildTree(hash) {
+		return ba.generations[idx].put(ctx, digest, b)
+	}
+
+	// check if all leaves have been uploaded first
+	//
+	// need to duplicate the buffer because:
+	// - one will be consumed to find the leaves
+	// - the second one is consumed to store it into the CAS
+	s, err := b.GetSizeBytes()
+	if err != nil {
+		return err
+	}
+	b1, b2 := b.CloneCopy(int(s))
+
+	bytes, err := b1.ToByteSlice(int(s))
+	if err != nil {
+		return err
+	}
+
+	err = ba.checkLeaves(ctx, digest, bytes)
+	if err != nil {
+		return err
+	}
+
+	return ba.generations[idx].put(ctx, digest, b2)
+}
+
+func (ba *multiGenerationBlobAccess) FindMissing(ctx context.Context, digests digest.Set) (digest.Set, error) {
+	currentDigests := digests
+	found := []toBeCopied{}
+	ba.rotateLock.RLock()
+	defer ba.rotateLock.RUnlock()
 	for _, i := range ba.indexes {
 		if currentDigests.Empty() {
 			break
 		}
 		missing, up := ba.generations[i].findMissing(currentDigests)
 		currentDigests = missing
-		upstream = append(upstream, up...)
+		found = append(found, up...)
 	}
-	if len(upstream) > 0 {
-		go ba.upstream(upstream...)
-	} else {
-		ba.rotateLock.RUnlock()
+
+	incomplete := digest.SetBuilder{}
+	currentIdx := ba.currentIndex()
+	for _, x := range found {
+		if x.idx != currentIdx {
+			if justbuild.IsJustbuildTree(x.dgst.GetHashString()) {
+				data, _ := ba.getFromGen(x.dgst.GetHashString(), x.idx)
+				err := ba.checkCompleteness(ctx, x.dgst, data)
+				if err != nil {
+					// incomplete tree: tell the user to re-upload the whole tree
+					incomplete.Add(x.dgst)
+					continue
+				}
+			}
+			ba.generations[currentIdx].uplink(x.dgst.GetHashString(), ba.generations[x.idx].dir)
+		}
 	}
-	return currentDigests, nil
+	union := []digest.Set{}
+	union = append(union, currentDigests, incomplete.Build())
+	return digest.GetUnion(union), nil
 
 }
 
 // right rotate indexes
-func (ba *MultiGenerationBlobAccess) rotate() {
+func (ba *multiGenerationBlobAccess) rotate() {
 	n := len(ba.indexes)
 	rotated := make([]uint32, n)
 	copy(rotated[1:], ba.indexes[:n-1])
@@ -332,7 +333,7 @@ func (ba *MultiGenerationBlobAccess) rotate() {
 
 }
 
-func (ba *MultiGenerationBlobAccess) GetCapabilities(ctx context.Context, instanceName digest.InstanceName) (*remoteexecution.ServerCapabilities, error) {
+func (ba *multiGenerationBlobAccess) GetCapabilities(ctx context.Context, instanceName digest.InstanceName) (*remoteexecution.ServerCapabilities, error) {
 	// x:=remoteexecution.ServerCapabilities{
 	// 	CacheCapabilities:     &remoteexecution.CacheCapabilities{},
 	// 	ExecutionCapabilities: &remoteexecution.ExecutionCapabilities{},
@@ -364,66 +365,70 @@ func prettyPrintSize(size uint64) string {
 	return fmt.Sprintf("%.2f %s", x, label)
 }
 
-func (ba *MultiGenerationBlobAccess) maybeRotate() {
+func (ba *multiGenerationBlobAccess) maybeRotate() {
 	currentIdx := ba.currentIndex()
 
 	size := ba.generations[currentIdx].size()
 	checkTime := time.Now().Unix()
-	log.Printf("%s --> %s  [threshold = %s], status = %#v\n", ba.generations[currentIdx].dir, prettyPrintSize(size), prettyPrintSize(ba.minimumRotationSizeBytes), ba.status)
 	if size >= ba.minimumRotationSizeBytes {
-		ba.rotateLock.Lock()
-		defer ba.rotateLock.Unlock()
 		// a rotation could have been triggered by another shard before we
 		// locked. In this case, we don't set the rotation flag to true,
 		// because it would result in a double rotation
 		if checkTime > ba.lastRotationTimeStamp {
-			if ba.autonomous {
-				// we can perform the rotation by our own
-				next := ba.indexToBeDeleted()
-				ba.generations[next].reset()
-				ba.rotate()
-			} else {
-				// just set a flag. the controller will handle it
-				ba.status = mg_proto.MultiGenStatus_ROTATION_NEEDED
-			}
+			ba.statusLock.Lock()
+			defer ba.statusLock.Unlock()
+			// just set a flag. the controller will handle it
+			ba.status = mg_proto.MultiGenStatus_ROTATION_NEEDED
 		}
 	}
+	log.Printf("%s --> %s [threshold = %s], status = %#v\n", ba.generations[currentIdx].dir, prettyPrintSize(size), prettyPrintSize(ba.minimumRotationSizeBytes), ba.status)
 }
 
 // implement the ShardedMultiGenerationControllerServer interface
 
-func (c *MultiGenerationBlobAccess) GetStatus(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
+func (c *multiGenerationBlobAccess) GetStatus(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
 	// log.Printf("got request for GetIfWantsToRotate\n")
+	c.statusLock.RLock()
+	defer c.statusLock.RUnlock()
 	return &mg_proto.MultiGenReply{Status: c.status}, nil
 }
 
-func (c *MultiGenerationBlobAccess) AcquireRotateLock(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
+func (c *multiGenerationBlobAccess) AcquireRotateLock(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
 	log.Printf("call acquire rotate lock")
-	c.rotateLock.Lock()
-	log.Printf("call acquire rotate lock---acquired")
-	return &mg_proto.MultiGenReply{Status: mg_proto.MultiGenStatus_OK}, nil
+	ok := c.rotateLock.TryLock()
+	if ok {
+		log.Printf("call acquire rotate lock---acquired")
+		return &mg_proto.MultiGenReply{Status: mg_proto.MultiGenStatus_OK}, nil
+	}
+	return &mg_proto.MultiGenReply{Status: mg_proto.MultiGenStatus_INTERNAL_ERROR}, nil
 }
 
-func (c *MultiGenerationBlobAccess) ReleaseRotateLock(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
+func (c *multiGenerationBlobAccess) ReleaseRotateLock(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
+	log.Printf("call release rotate lock")
 	c.rotateLock.Unlock()
+	log.Printf("call release rotate lock---released")
 	return &mg_proto.MultiGenReply{Status: mg_proto.MultiGenStatus_OK}, nil
 }
 
-func (c *MultiGenerationBlobAccess) DoRotate(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
+func (c *multiGenerationBlobAccess) DoRotate(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
 	next := c.indexToBeDeleted()
 	c.rotate()
-	c.rotateLock.Unlock()
+	defer c.rotateLock.Unlock()
 	c.generations[next].reset()
+	c.statusLock.Lock()
+	defer c.statusLock.Unlock()
 	c.status = mg_proto.MultiGenStatus_OK
 	return &mg_proto.MultiGenReply{Status: c.status}, nil
 }
 
-func (c *MultiGenerationBlobAccess) DoReset(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
+func (c *multiGenerationBlobAccess) DoReset(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
 	log.Printf("Resetting the whole cache")
 	for i := range c.indexes {
 		c.generations[i].reset()
 	}
 	c.rotateLock.Unlock()
+	c.statusLock.Lock()
+	defer c.statusLock.Unlock()
 	c.status = mg_proto.MultiGenStatus_OK
 	return &mg_proto.MultiGenReply{Status: c.status}, nil
 }

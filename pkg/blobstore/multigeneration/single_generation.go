@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/buildbarn/bb-storage/pkg/blobstore/buffer"
 	"github.com/buildbarn/bb-storage/pkg/digest"
@@ -49,7 +48,7 @@ type singleGeneration struct {
 	mutex   sync.RWMutex
 }
 
-func newSingleGeneration(root string, i uint32, nShards uint32) (*singleGeneration, time.Time) {
+func newSingleGeneration(root string, i uint32, nShards uint32) *singleGeneration {
 	x := singleGeneration{
 		dir:     root,
 		idx:     i,
@@ -57,23 +56,12 @@ func newSingleGeneration(root string, i uint32, nShards uint32) (*singleGenerati
 		shards:  make([]*shard, nShards),
 	}
 	x.initShards()
-	// scan dir to recover from disk
+	// sanity check that we have access to the directory we will handle
 	_, err := os.ReadDir(root)
 	if err != nil {
 		log.Panicf("Unable to access directory %s", root)
 	}
-	// for _, f := range entries {
-	// 	fInfo, err := f.Info()
-	// 	if err == nil {
-	// 		name := fInfo.Name()
-	// 		i := x.shardIdx(name)
-	// 		x.shards[i].add(name)
-	// 	}
-	// }
-	// return timestamp of root. used to find the most recent generation
-	di, _ := os.Stat(root)
-	t := di.ModTime()
-	return &x, t
+	return &x
 }
 
 func (c *singleGeneration) initShards() {
@@ -175,7 +163,6 @@ func (c *singleGeneration) reset() {
 	}
 	for _, f := range entries {
 		name := filepath.Join(c.dir, f.Name())
-		log.Printf("gc evicted %s", name)
 		os.RemoveAll(name)
 	}
 	c.mutex.Unlock()
@@ -204,7 +191,7 @@ func (c *singleGeneration) findMissing(digests digest.Set) (digest.Set, []toBeCo
 		go func(dgst digest.Digest, h string) {
 			defer producersWG.Done()
 			if i := c.shardIdx(h); c.shards[i].has(h) {
-				upstreamChnl <- toBeCopied{hash: h, idx: c.idx}
+				upstreamChnl <- toBeCopied{dgst: dgst, idx: c.idx}
 			} else {
 				missingChnl <- dgst
 			}

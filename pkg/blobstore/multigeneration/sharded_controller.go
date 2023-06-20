@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/buildbarn/bb-storage/pkg/grpc"
@@ -84,19 +83,19 @@ func (c *shardedMultiGenerationController) check() {
 		return
 	}
 
-	if status == mg_proto.MultiGenStatus_ROTATION_NEEDED {
-		err = c.callRotate(ctx)
-		if err == nil {
-			//all good
-			return
-		} else {
-			log.Printf("Could not perform complete rotation: %v. retrying later\n", err)
-		}
+	// if status == mg_proto.MultiGenStatus_ROTATION_NEEDED {
+	err = c.callRotate(ctx)
+	if err == nil {
+		//all good
+		return
+	} else {
+		log.Printf("Could not perform complete rotation: %v. retrying later\n", err)
 	}
-	if err != nil || status == mg_proto.MultiGenStatus_RESET_NEEDED {
-		log.Printf("resetting")
-		c.callReset(ctx)
-	}
+	// }
+	// if err != nil || status == mg_proto.MultiGenStatus_RESET_NEEDED {
+	// 	log.Printf("resetting")
+	// 	c.callReset(ctx)
+	// }
 
 }
 
@@ -144,68 +143,27 @@ func (c *shardedMultiGenerationController) releaseAcquiredLocks(ctx context.Cont
 }
 
 func (c *shardedMultiGenerationController) acquireAllRotateLocks(ctx context.Context) (bool, error) {
-
-	acquiredLocks := make([]bool, len(c.clients))
-	wg := sync.WaitGroup{}
 	for i, client := range c.clients {
-		wg.Add(1)
-		go func(i int, client mg_proto.ShardedMultiGenerationControllerClient) {
-			defer wg.Done()
-			_, err := client.AcquireRotateLock(ctx, request)
+		response, err := client.AcquireRotateLock(ctx, request)
+		if response.Status != mg_proto.MultiGenStatus_OK {
 			if err != nil {
 				log.Println(err)
-			} else {
-				acquiredLocks[i] = true
 			}
-		}(i, client)
-	}
-	wg.Wait()
-	// check if we got all the locks
-	for i, ok := range acquiredLocks {
-		if !ok {
-			// try a second time
-			_, err := c.clients[i].AcquireRotateLock(ctx, request)
-			if err != nil {
-				log.Println(err)
-				// try to release already acquired locks
-				errRelease := c.releaseAcquiredLocks(ctx, acquiredLocks)
-				if errRelease != nil {
-					return false, fmt.Errorf("while trying to aquire lock on client %d: %s. While trying to release acquired locks: %s", i, err, errRelease)
-				}
-				// we could not acquire all the locks, but we successfully
-				// released the acquired ones.
-				// the controller will retry later
-				return false, nil
+			for j := i - 1; j >= 0; j-- {
+				c.clients[j].ReleaseRotateLock(ctx, request)
 			}
+			return false, nil
 		}
 	}
 	return true, nil
 }
 
 func (c *shardedMultiGenerationController) callRotate(ctx context.Context) error {
-	wg := sync.WaitGroup{}
-	// call rotate on all the servers in parallel and keep track of who succeed
-	okeys := make([]bool, len(c.clients))
-	for i, client := range c.clients {
-		wg.Add(1)
-		go func(i int, client mg_proto.ShardedMultiGenerationControllerClient) {
-			defer wg.Done()
-			_, err := client.DoRotate(ctx, request)
-			if err == nil {
-				okeys[i] = true
-			}
-		}(i, client)
-	}
-	wg.Wait()
-
-	// for failed calls, if any, we retry one last time
-	for i, ok := range okeys {
-		if !ok {
-			_, err := c.clients[i].DoRotate(ctx, request)
-			if err != nil {
-				// TODO: try to recover by forcing a reset of the storage pods
-				return err
-			}
+	for _, client := range c.clients {
+		_, err := client.DoRotate(ctx, request)
+		if err != nil {
+			log.Printf("err")
+			continue
 		}
 	}
 	return nil

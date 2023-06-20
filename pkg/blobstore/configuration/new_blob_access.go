@@ -3,6 +3,7 @@ package configuration
 import (
 	"archive/zip"
 	"context"
+	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -265,8 +266,24 @@ func (nc *simpleNestedBlobAccessCreator) newNestedBlobAccessBare(configuration *
 		}, "size_distinguishing", nil
 
 	case *pb.BlobAccessConfiguration_MultiGeneration:
+		backends := make([]blobstore.BlobAccess, 0, len(backend.MultiGeneration.Crew))
+		for _, shard := range backend.MultiGeneration.Crew {
+			if shard.Backend == nil {
+				// Drained backend.
+				backends = append(backends, nil)
+			} else {
+				// Undrained backend.
+				backend, err := nc.NewNestedBlobAccess(shard.Backend, creator)
+				// backend, _, err := nc.newNestedBlobAccessBare(shard.Backend, creator)
+				if err != nil {
+					return BlobAccessInfo{}, "", err
+				}
+				backends = append(backends, backend.BlobAccess)
+			}
+		}
+		log.Printf("multi_generation pod")
 		return BlobAccessInfo{
-			BlobAccess:      nil, //multigeneration.NewMultiGenerationBlobAccess(backend.MultiGeneration.NGenerations, backend.MultiGeneration.MinimumRotationSizeBytes, backend.MultiGeneration.RotationIntervalSeconds, backend.MultiGeneration.RootDir, backend.MultiGeneration.MaxTreeTraversalConcurrency, backend.MultiGeneration.NShardsSingleGeneration, backend.MultiGeneration.InternalTreeTraversal),
+			BlobAccess:      multigeneration.NewMultiGenerationBlobAccess(backend.MultiGeneration.NGenerations, backend.MultiGeneration.MinimumRotationSizeBytes, backend.MultiGeneration.RotationIntervalSeconds, backend.MultiGeneration.RootDir, backend.MultiGeneration.NShardsSingleGeneration, backends),
 			DigestKeyFormat: digest.KeyWithInstance,
 		}, "multi_generation", nil
 	case *pb.BlobAccessConfiguration_ShardedMultiGeneration:
@@ -286,7 +303,7 @@ func (nc *simpleNestedBlobAccessCreator) newNestedBlobAccessBare(configuration *
 			}
 		}
 		return BlobAccessInfo{
-			BlobAccess:      multigeneration.NewShardedMultiGenerationBlobAccess(backends, backend.ShardedMultiGeneration.MaxTreeTraversalConcurrency),
+			BlobAccess:      multigeneration.NewShardedMultiGenerationBlobAccess(backends),
 			DigestKeyFormat: digest.KeyWithInstance,
 		}, "sharded_multi_generation", nil
 
