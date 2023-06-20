@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
@@ -13,8 +12,6 @@ import (
 	"github.com/buildbarn/bb-storage/pkg/blobstore/multigeneration"
 	"github.com/buildbarn/bb-storage/pkg/builder"
 	"github.com/buildbarn/bb-storage/pkg/capabilities"
-	"github.com/buildbarn/bb-storage/pkg/clock"
-	"github.com/buildbarn/bb-storage/pkg/digest"
 	"github.com/buildbarn/bb-storage/pkg/global"
 	bb_grpc "github.com/buildbarn/bb-storage/pkg/grpc"
 	"github.com/buildbarn/bb-storage/pkg/program"
@@ -55,42 +52,20 @@ func main() {
 		// Content Addressable Storage (CAS).
 		var contentAddressableStorageInfo *blobstore_configuration.BlobAccessInfo
 		var contentAddressableStorage blobstore.BlobAccess
-		var multigenObj *multigeneration.MultiGenerationBlobAccess
-		if configuration.ContentAddressableStorage != nil {
-			// if multigenObj is used here, it will shadow the outer one...
-			multigen, allAuthorizers, err := multigeneration.NewMultiGenerationBlobAccessFromConfiguration(configuration.ContentAddressableStorage)
-			multigenObj = multigen
-			if err != nil {
-				log.Fatal("Failed to create Content Addressable Storage: ", err)
-			}
-			casCreator := blobstore_configuration.NewCASBlobAccessCreator(grpcClientFactory, int(configuration.MaximumMessageSizeBytes))
-			if multigenObj != nil {
-				// apply the "decorators" invoked within the newScannableBlobAccess
-				blobAccess := casCreator.WrapTopLevelBlobAccess(
-					blobstore.NewMetricsBlobAccess(multigenObj, clock.SystemClock, "cas", "multi_generation"))
-				blobAccess = blobstore.NewAuthorizingBlobAccess(blobAccess, allAuthorizers[0], allAuthorizers[1], allAuthorizers[2])
 
-				cacheCapabilitiesAuthorizers = append(cacheCapabilitiesAuthorizers, allAuthorizers...)
-				contentAddressableStorage = blobAccess
-				contentAddressableStorageInfo = &blobstore_configuration.BlobAccessInfo{BlobAccess: multigenObj, DigestKeyFormat: digest.KeyWithInstance}
-				cacheCapabilitiesProviders = append(cacheCapabilitiesProviders, blobAccess)
-			} else {
-
-				info, authorizedBackend, allAuthorizers, err := newScannableBlobAccess(
-					dependenciesGroup,
-					configuration.ContentAddressableStorage,
-					blobstore_configuration.NewCASBlobAccessCreator(
-						grpcClientFactory,
-						int(configuration.MaximumMessageSizeBytes)))
-				if err != nil {
-					return util.StatusWrap(err, "Failed to create Content Addressable Storage")
-				}
-				cacheCapabilitiesProviders = append(cacheCapabilitiesProviders, info.BlobAccess)
-				cacheCapabilitiesAuthorizers = append(cacheCapabilitiesAuthorizers, allAuthorizers...)
-				contentAddressableStorageInfo = &info
-				contentAddressableStorage = authorizedBackend
-			}
+		info, authorizedBackend, allAuthorizers, err := newScannableBlobAccess(
+			dependenciesGroup,
+			configuration.ContentAddressableStorage,
+			blobstore_configuration.NewCASBlobAccessCreator(
+				grpcClientFactory,
+				int(configuration.MaximumMessageSizeBytes)))
+		if err != nil {
+			return util.StatusWrap(err, "Failed to create Content Addressable Storage")
 		}
+		cacheCapabilitiesProviders = append(cacheCapabilitiesProviders, info.BlobAccess)
+		cacheCapabilitiesAuthorizers = append(cacheCapabilitiesAuthorizers, allAuthorizers...)
+		contentAddressableStorageInfo = &info
+		contentAddressableStorage = authorizedBackend
 		// Action Cache (AC).
 		var actionCache blobstore.BlobAccess
 		if configuration.ActionCache != nil {
@@ -195,10 +170,9 @@ func main() {
 						grpcservers.NewByteStreamServer(
 							contentAddressableStorage,
 							1<<16))
-					if multigenObj != nil {
-						mg_proto.RegisterShardedMultiGenerationControllerServer(s, multigenObj)
+					if multigeneration.MultiGenerationBlobAccessPtr != nil {
+						mg_proto.RegisterShardedMultiGenerationControllerServer(s, multigeneration.MultiGenerationBlobAccessPtr)
 					}
-
 				}
 				if actionCache != nil {
 					remoteexecution.RegisterActionCacheServer(

@@ -2054,13 +2054,12 @@ type MultiGenerationBlobAccessConfiguration struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	NGenerations                uint32 `protobuf:"varint,1,opt,name=n_generations,json=nGenerations,proto3" json:"n_generations,omitempty"`
-	MinimumRotationSizeBytes    uint64 `protobuf:"varint,3,opt,name=minimum_rotation_size_bytes,json=minimumRotationSizeBytes,proto3" json:"minimum_rotation_size_bytes,omitempty"`
-	RotationIntervalSeconds     uint64 `protobuf:"varint,4,opt,name=rotation_interval_seconds,json=rotationIntervalSeconds,proto3" json:"rotation_interval_seconds,omitempty"`
-	RootDir                     string `protobuf:"bytes,5,opt,name=root_dir,json=rootDir,proto3" json:"root_dir,omitempty"`
-	NShardsSingleGeneration     uint32 `protobuf:"varint,6,opt,name=n_shards_single_generation,json=nShardsSingleGeneration,proto3" json:"n_shards_single_generation,omitempty"`
-	Autonomous                  bool   `protobuf:"varint,7,opt,name=autonomous,proto3" json:"autonomous,omitempty"`
-	MaxTreeTraversalConcurrency uint32 `protobuf:"varint,8,opt,name=max_tree_traversal_concurrency,json=maxTreeTraversalConcurrency,proto3" json:"max_tree_traversal_concurrency,omitempty"`
+	NGenerations             uint32                                          `protobuf:"varint,1,opt,name=n_generations,json=nGenerations,proto3" json:"n_generations,omitempty"`
+	MinimumRotationSizeBytes uint64                                          `protobuf:"varint,3,opt,name=minimum_rotation_size_bytes,json=minimumRotationSizeBytes,proto3" json:"minimum_rotation_size_bytes,omitempty"`
+	RotationIntervalSeconds  uint64                                          `protobuf:"varint,4,opt,name=rotation_interval_seconds,json=rotationIntervalSeconds,proto3" json:"rotation_interval_seconds,omitempty"`
+	RootDir                  string                                          `protobuf:"bytes,5,opt,name=root_dir,json=rootDir,proto3" json:"root_dir,omitempty"`
+	NShardsSingleGeneration  uint32                                          `protobuf:"varint,6,opt,name=n_shards_single_generation,json=nShardsSingleGeneration,proto3" json:"n_shards_single_generation,omitempty"`
+	Crew                     []*MultiGenerationBlobAccessConfiguration_Shard `protobuf:"bytes,9,rep,name=crew,proto3" json:"crew,omitempty"`
 }
 
 func (x *MultiGenerationBlobAccessConfiguration) Reset() {
@@ -2130,18 +2129,11 @@ func (x *MultiGenerationBlobAccessConfiguration) GetNShardsSingleGeneration() ui
 	return 0
 }
 
-func (x *MultiGenerationBlobAccessConfiguration) GetAutonomous() bool {
+func (x *MultiGenerationBlobAccessConfiguration) GetCrew() []*MultiGenerationBlobAccessConfiguration_Shard {
 	if x != nil {
-		return x.Autonomous
+		return x.Crew
 	}
-	return false
-}
-
-func (x *MultiGenerationBlobAccessConfiguration) GetMaxTreeTraversalConcurrency() uint32 {
-	if x != nil {
-		return x.MaxTreeTraversalConcurrency
-	}
-	return 0
+	return nil
 }
 
 type ShardedMultiGenerationBlobAccessConfiguration struct {
@@ -2149,9 +2141,8 @@ type ShardedMultiGenerationBlobAccessConfiguration struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Shards                      []*ShardedMultiGenerationBlobAccessConfiguration_Shard `protobuf:"bytes,1,rep,name=Shards,proto3" json:"Shards,omitempty"`
-	MaxTreeTraversalConcurrency uint32                                                 `protobuf:"varint,2,opt,name=max_tree_traversal_concurrency,json=maxTreeTraversalConcurrency,proto3" json:"max_tree_traversal_concurrency,omitempty"`
-	QueryIntervalSeconds        uint64                                                 `protobuf:"varint,4,opt,name=query_interval_seconds,json=queryIntervalSeconds,proto3" json:"query_interval_seconds,omitempty"`
+	Shards               []*ShardedMultiGenerationBlobAccessConfiguration_Shard `protobuf:"bytes,1,rep,name=Shards,proto3" json:"Shards,omitempty"`
+	QueryIntervalSeconds uint64                                                 `protobuf:"varint,4,opt,name=query_interval_seconds,json=queryIntervalSeconds,proto3" json:"query_interval_seconds,omitempty"`
 }
 
 func (x *ShardedMultiGenerationBlobAccessConfiguration) Reset() {
@@ -2191,13 +2182,6 @@ func (x *ShardedMultiGenerationBlobAccessConfiguration) GetShards() []*ShardedMu
 		return x.Shards
 	}
 	return nil
-}
-
-func (x *ShardedMultiGenerationBlobAccessConfiguration) GetMaxTreeTraversalConcurrency() uint32 {
-	if x != nil {
-		return x.MaxTreeTraversalConcurrency
-	}
-	return 0
 }
 
 func (x *ShardedMultiGenerationBlobAccessConfiguration) GetQueryIntervalSeconds() uint64 {
@@ -2474,6 +2458,53 @@ func (x *LocalBlobAccessConfiguration_Persistent) GetMinimumEpochInterval() *dur
 	return nil
 }
 
+type MultiGenerationBlobAccessConfiguration_Shard struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Backend *BlobAccessConfiguration `protobuf:"bytes,1,opt,name=backend,proto3" json:"backend,omitempty"`
+}
+
+func (x *MultiGenerationBlobAccessConfiguration_Shard) Reset() {
+	*x = MultiGenerationBlobAccessConfiguration_Shard{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_pkg_proto_configuration_blobstore_blobstore_proto_msgTypes[33]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *MultiGenerationBlobAccessConfiguration_Shard) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MultiGenerationBlobAccessConfiguration_Shard) ProtoMessage() {}
+
+func (x *MultiGenerationBlobAccessConfiguration_Shard) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_proto_configuration_blobstore_blobstore_proto_msgTypes[33]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MultiGenerationBlobAccessConfiguration_Shard.ProtoReflect.Descriptor instead.
+func (*MultiGenerationBlobAccessConfiguration_Shard) Descriptor() ([]byte, []int) {
+	return file_pkg_proto_configuration_blobstore_blobstore_proto_rawDescGZIP(), []int{24, 0}
+}
+
+func (x *MultiGenerationBlobAccessConfiguration_Shard) GetBackend() *BlobAccessConfiguration {
+	if x != nil {
+		return x.Backend
+	}
+	return nil
+}
+
 type ShardedMultiGenerationBlobAccessConfiguration_Shard struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -2485,7 +2516,7 @@ type ShardedMultiGenerationBlobAccessConfiguration_Shard struct {
 func (x *ShardedMultiGenerationBlobAccessConfiguration_Shard) Reset() {
 	*x = ShardedMultiGenerationBlobAccessConfiguration_Shard{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_pkg_proto_configuration_blobstore_blobstore_proto_msgTypes[33]
+		mi := &file_pkg_proto_configuration_blobstore_blobstore_proto_msgTypes[34]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -2498,7 +2529,7 @@ func (x *ShardedMultiGenerationBlobAccessConfiguration_Shard) String() string {
 func (*ShardedMultiGenerationBlobAccessConfiguration_Shard) ProtoMessage() {}
 
 func (x *ShardedMultiGenerationBlobAccessConfiguration_Shard) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_proto_configuration_blobstore_blobstore_proto_msgTypes[33]
+	mi := &file_pkg_proto_configuration_blobstore_blobstore_proto_msgTypes[34]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3214,7 +3245,7 @@ var file_pkg_proto_configuration_blobstore_blobstore_proto_rawDesc = []byte{
 	0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x62, 0x6c, 0x6f, 0x62, 0x73, 0x74, 0x6f, 0x72,
 	0x65, 0x2e, 0x42, 0x6c, 0x6f, 0x62, 0x41, 0x63, 0x63, 0x65, 0x73, 0x73, 0x43, 0x6f, 0x6e, 0x66,
 	0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65,
-	0x3a, 0x02, 0x38, 0x01, 0x22, 0x85, 0x03, 0x0a, 0x26, 0x4d, 0x75, 0x6c, 0x74, 0x69, 0x47, 0x65,
+	0x3a, 0x02, 0x38, 0x01, 0x22, 0xe4, 0x03, 0x0a, 0x26, 0x4d, 0x75, 0x6c, 0x74, 0x69, 0x47, 0x65,
 	0x6e, 0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x42, 0x6c, 0x6f, 0x62, 0x41, 0x63, 0x63, 0x65,
 	0x73, 0x73, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12,
 	0x23, 0x0a, 0x0d, 0x6e, 0x5f, 0x67, 0x65, 0x6e, 0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73,
@@ -3232,42 +3263,43 @@ var file_pkg_proto_configuration_blobstore_blobstore_proto_rawDesc = []byte{
 	0x73, 0x68, 0x61, 0x72, 0x64, 0x73, 0x5f, 0x73, 0x69, 0x6e, 0x67, 0x6c, 0x65, 0x5f, 0x67, 0x65,
 	0x6e, 0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x06, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x17,
 	0x6e, 0x53, 0x68, 0x61, 0x72, 0x64, 0x73, 0x53, 0x69, 0x6e, 0x67, 0x6c, 0x65, 0x47, 0x65, 0x6e,
-	0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x1e, 0x0a, 0x0a, 0x61, 0x75, 0x74, 0x6f, 0x6e,
-	0x6f, 0x6d, 0x6f, 0x75, 0x73, 0x18, 0x07, 0x20, 0x01, 0x28, 0x08, 0x52, 0x0a, 0x61, 0x75, 0x74,
-	0x6f, 0x6e, 0x6f, 0x6d, 0x6f, 0x75, 0x73, 0x12, 0x43, 0x0a, 0x1e, 0x6d, 0x61, 0x78, 0x5f, 0x74,
-	0x72, 0x65, 0x65, 0x5f, 0x74, 0x72, 0x61, 0x76, 0x65, 0x72, 0x73, 0x61, 0x6c, 0x5f, 0x63, 0x6f,
-	0x6e, 0x63, 0x75, 0x72, 0x72, 0x65, 0x6e, 0x63, 0x79, 0x18, 0x08, 0x20, 0x01, 0x28, 0x0d, 0x52,
-	0x1b, 0x6d, 0x61, 0x78, 0x54, 0x72, 0x65, 0x65, 0x54, 0x72, 0x61, 0x76, 0x65, 0x72, 0x73, 0x61,
-	0x6c, 0x43, 0x6f, 0x6e, 0x63, 0x75, 0x72, 0x72, 0x65, 0x6e, 0x63, 0x79, 0x22, 0xf9, 0x02, 0x0a,
-	0x2d, 0x53, 0x68, 0x61, 0x72, 0x64, 0x65, 0x64, 0x4d, 0x75, 0x6c, 0x74, 0x69, 0x47, 0x65, 0x6e,
-	0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x42, 0x6c, 0x6f, 0x62, 0x41, 0x63, 0x63, 0x65, 0x73,
-	0x73, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x6e,
-	0x0a, 0x06, 0x53, 0x68, 0x61, 0x72, 0x64, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x56,
-	0x2e, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x62, 0x61, 0x72, 0x6e, 0x2e, 0x63, 0x6f, 0x6e, 0x66, 0x69,
-	0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x62, 0x6c, 0x6f, 0x62, 0x73, 0x74, 0x6f,
-	0x72, 0x65, 0x2e, 0x53, 0x68, 0x61, 0x72, 0x64, 0x65, 0x64, 0x4d, 0x75, 0x6c, 0x74, 0x69, 0x47,
+	0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x63, 0x0a, 0x04, 0x63, 0x72, 0x65, 0x77, 0x18,
+	0x09, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x4f, 0x2e, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x62, 0x61, 0x72,
+	0x6e, 0x2e, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e,
+	0x62, 0x6c, 0x6f, 0x62, 0x73, 0x74, 0x6f, 0x72, 0x65, 0x2e, 0x4d, 0x75, 0x6c, 0x74, 0x69, 0x47,
 	0x65, 0x6e, 0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x42, 0x6c, 0x6f, 0x62, 0x41, 0x63, 0x63,
 	0x65, 0x73, 0x73, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e,
-	0x2e, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x06, 0x53, 0x68, 0x61, 0x72, 0x64, 0x73, 0x12, 0x43,
-	0x0a, 0x1e, 0x6d, 0x61, 0x78, 0x5f, 0x74, 0x72, 0x65, 0x65, 0x5f, 0x74, 0x72, 0x61, 0x76, 0x65,
-	0x72, 0x73, 0x61, 0x6c, 0x5f, 0x63, 0x6f, 0x6e, 0x63, 0x75, 0x72, 0x72, 0x65, 0x6e, 0x63, 0x79,
-	0x18, 0x02, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x1b, 0x6d, 0x61, 0x78, 0x54, 0x72, 0x65, 0x65, 0x54,
-	0x72, 0x61, 0x76, 0x65, 0x72, 0x73, 0x61, 0x6c, 0x43, 0x6f, 0x6e, 0x63, 0x75, 0x72, 0x72, 0x65,
-	0x6e, 0x63, 0x79, 0x12, 0x34, 0x0a, 0x16, 0x71, 0x75, 0x65, 0x72, 0x79, 0x5f, 0x69, 0x6e, 0x74,
-	0x65, 0x72, 0x76, 0x61, 0x6c, 0x5f, 0x73, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73, 0x18, 0x04, 0x20,
-	0x01, 0x28, 0x04, 0x52, 0x14, 0x71, 0x75, 0x65, 0x72, 0x79, 0x49, 0x6e, 0x74, 0x65, 0x72, 0x76,
-	0x61, 0x6c, 0x53, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73, 0x1a, 0x5d, 0x0a, 0x05, 0x53, 0x68, 0x61,
-	0x72, 0x64, 0x12, 0x54, 0x0a, 0x07, 0x62, 0x61, 0x63, 0x6b, 0x65, 0x6e, 0x64, 0x18, 0x01, 0x20,
-	0x01, 0x28, 0x0b, 0x32, 0x3a, 0x2e, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x62, 0x61, 0x72, 0x6e, 0x2e,
-	0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x62, 0x6c,
-	0x6f, 0x62, 0x73, 0x74, 0x6f, 0x72, 0x65, 0x2e, 0x42, 0x6c, 0x6f, 0x62, 0x41, 0x63, 0x63, 0x65,
-	0x73, 0x73, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52,
-	0x07, 0x62, 0x61, 0x63, 0x6b, 0x65, 0x6e, 0x64, 0x42, 0x43, 0x5a, 0x41, 0x67, 0x69, 0x74, 0x68,
-	0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x62, 0x61, 0x72, 0x6e,
-	0x2f, 0x62, 0x62, 0x2d, 0x73, 0x74, 0x6f, 0x72, 0x61, 0x67, 0x65, 0x2f, 0x70, 0x6b, 0x67, 0x2f,
-	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74,
-	0x69, 0x6f, 0x6e, 0x2f, 0x62, 0x6c, 0x6f, 0x62, 0x73, 0x74, 0x6f, 0x72, 0x65, 0x62, 0x06, 0x70,
-	0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x2e, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x04, 0x63, 0x72, 0x65, 0x77, 0x1a, 0x5d, 0x0a, 0x05,
+	0x53, 0x68, 0x61, 0x72, 0x64, 0x12, 0x54, 0x0a, 0x07, 0x62, 0x61, 0x63, 0x6b, 0x65, 0x6e, 0x64,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x3a, 0x2e, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x62, 0x61,
+	0x72, 0x6e, 0x2e, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e,
+	0x2e, 0x62, 0x6c, 0x6f, 0x62, 0x73, 0x74, 0x6f, 0x72, 0x65, 0x2e, 0x42, 0x6c, 0x6f, 0x62, 0x41,
+	0x63, 0x63, 0x65, 0x73, 0x73, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69,
+	0x6f, 0x6e, 0x52, 0x07, 0x62, 0x61, 0x63, 0x6b, 0x65, 0x6e, 0x64, 0x22, 0xb4, 0x02, 0x0a, 0x2d,
+	0x53, 0x68, 0x61, 0x72, 0x64, 0x65, 0x64, 0x4d, 0x75, 0x6c, 0x74, 0x69, 0x47, 0x65, 0x6e, 0x65,
+	0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x42, 0x6c, 0x6f, 0x62, 0x41, 0x63, 0x63, 0x65, 0x73, 0x73,
+	0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x6e, 0x0a,
+	0x06, 0x53, 0x68, 0x61, 0x72, 0x64, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x56, 0x2e,
+	0x62, 0x75, 0x69, 0x6c, 0x64, 0x62, 0x61, 0x72, 0x6e, 0x2e, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67,
+	0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x62, 0x6c, 0x6f, 0x62, 0x73, 0x74, 0x6f, 0x72,
+	0x65, 0x2e, 0x53, 0x68, 0x61, 0x72, 0x64, 0x65, 0x64, 0x4d, 0x75, 0x6c, 0x74, 0x69, 0x47, 0x65,
+	0x6e, 0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x42, 0x6c, 0x6f, 0x62, 0x41, 0x63, 0x63, 0x65,
+	0x73, 0x73, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e,
+	0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x06, 0x53, 0x68, 0x61, 0x72, 0x64, 0x73, 0x12, 0x34, 0x0a,
+	0x16, 0x71, 0x75, 0x65, 0x72, 0x79, 0x5f, 0x69, 0x6e, 0x74, 0x65, 0x72, 0x76, 0x61, 0x6c, 0x5f,
+	0x73, 0x65, 0x63, 0x6f, 0x6e, 0x64, 0x73, 0x18, 0x04, 0x20, 0x01, 0x28, 0x04, 0x52, 0x14, 0x71,
+	0x75, 0x65, 0x72, 0x79, 0x49, 0x6e, 0x74, 0x65, 0x72, 0x76, 0x61, 0x6c, 0x53, 0x65, 0x63, 0x6f,
+	0x6e, 0x64, 0x73, 0x1a, 0x5d, 0x0a, 0x05, 0x53, 0x68, 0x61, 0x72, 0x64, 0x12, 0x54, 0x0a, 0x07,
+	0x62, 0x61, 0x63, 0x6b, 0x65, 0x6e, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x3a, 0x2e,
+	0x62, 0x75, 0x69, 0x6c, 0x64, 0x62, 0x61, 0x72, 0x6e, 0x2e, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67,
+	0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x62, 0x6c, 0x6f, 0x62, 0x73, 0x74, 0x6f, 0x72,
+	0x65, 0x2e, 0x42, 0x6c, 0x6f, 0x62, 0x41, 0x63, 0x63, 0x65, 0x73, 0x73, 0x43, 0x6f, 0x6e, 0x66,
+	0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x07, 0x62, 0x61, 0x63, 0x6b, 0x65,
+	0x6e, 0x64, 0x42, 0x43, 0x5a, 0x41, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d,
+	0x2f, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x62, 0x61, 0x72, 0x6e, 0x2f, 0x62, 0x62, 0x2d, 0x73, 0x74,
+	0x6f, 0x72, 0x61, 0x67, 0x65, 0x2f, 0x70, 0x6b, 0x67, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f,
+	0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x75, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2f, 0x62, 0x6c,
+	0x6f, 0x62, 0x73, 0x74, 0x6f, 0x72, 0x65, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -3282,7 +3314,7 @@ func file_pkg_proto_configuration_blobstore_blobstore_proto_rawDescGZIP() []byte
 	return file_pkg_proto_configuration_blobstore_blobstore_proto_rawDescData
 }
 
-var file_pkg_proto_configuration_blobstore_blobstore_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
+var file_pkg_proto_configuration_blobstore_blobstore_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
 var file_pkg_proto_configuration_blobstore_blobstore_proto_goTypes = []interface{}{
 	(*BlobstoreConfiguration)(nil),                              // 0: buildbarn.configuration.blobstore.BlobstoreConfiguration
 	(*BlobAccessConfiguration)(nil),                             // 1: buildbarn.configuration.blobstore.BlobAccessConfiguration
@@ -3317,17 +3349,18 @@ var file_pkg_proto_configuration_blobstore_blobstore_proto_goTypes = []interface
 	(*LocalBlobAccessConfiguration_Persistent)(nil),             // 30: buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.Persistent
 	nil, // 31: buildbarn.configuration.blobstore.DemultiplexingBlobAccessConfiguration.InstanceNamePrefixesEntry
 	nil, // 32: buildbarn.configuration.blobstore.WithLabelsBlobAccessConfiguration.LabelsEntry
-	(*ShardedMultiGenerationBlobAccessConfiguration_Shard)(nil), // 33: buildbarn.configuration.blobstore.ShardedMultiGenerationBlobAccessConfiguration.Shard
-	(*grpc.ClientConfiguration)(nil),                            // 34: buildbarn.configuration.grpc.ClientConfiguration
-	(*status.Status)(nil),                                       // 35: google.rpc.Status
-	(*durationpb.Duration)(nil),                                 // 36: google.protobuf.Duration
-	(*tls.ClientConfiguration)(nil),                             // 37: buildbarn.configuration.tls.ClientConfiguration
-	(*http.ClientConfiguration)(nil),                            // 38: buildbarn.configuration.http.ClientConfiguration
-	(*blockdevice.Configuration)(nil),                           // 39: buildbarn.configuration.blockdevice.Configuration
-	(*digest.ExistenceCacheConfiguration)(nil),                  // 40: buildbarn.configuration.digest.ExistenceCacheConfiguration
-	(*aws.SessionConfiguration)(nil),                            // 41: buildbarn.configuration.cloud.aws.SessionConfiguration
-	(*gcp.ClientOptionsConfiguration)(nil),                      // 42: buildbarn.configuration.cloud.gcp.ClientOptionsConfiguration
-	(*emptypb.Empty)(nil),                                       // 43: google.protobuf.Empty
+	(*MultiGenerationBlobAccessConfiguration_Shard)(nil),        // 33: buildbarn.configuration.blobstore.MultiGenerationBlobAccessConfiguration.Shard
+	(*ShardedMultiGenerationBlobAccessConfiguration_Shard)(nil), // 34: buildbarn.configuration.blobstore.ShardedMultiGenerationBlobAccessConfiguration.Shard
+	(*grpc.ClientConfiguration)(nil),                            // 35: buildbarn.configuration.grpc.ClientConfiguration
+	(*status.Status)(nil),                                       // 36: google.rpc.Status
+	(*durationpb.Duration)(nil),                                 // 37: google.protobuf.Duration
+	(*tls.ClientConfiguration)(nil),                             // 38: buildbarn.configuration.tls.ClientConfiguration
+	(*http.ClientConfiguration)(nil),                            // 39: buildbarn.configuration.http.ClientConfiguration
+	(*blockdevice.Configuration)(nil),                           // 40: buildbarn.configuration.blockdevice.Configuration
+	(*digest.ExistenceCacheConfiguration)(nil),                  // 41: buildbarn.configuration.digest.ExistenceCacheConfiguration
+	(*aws.SessionConfiguration)(nil),                            // 42: buildbarn.configuration.cloud.aws.SessionConfiguration
+	(*gcp.ClientOptionsConfiguration)(nil),                      // 43: buildbarn.configuration.cloud.gcp.ClientOptionsConfiguration
+	(*emptypb.Empty)(nil),                                       // 44: google.protobuf.Empty
 }
 var file_pkg_proto_configuration_blobstore_blobstore_proto_depIdxs = []int32{
 	1,  // 0: buildbarn.configuration.blobstore.BlobstoreConfiguration.content_addressable_storage:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
@@ -3336,8 +3369,8 @@ var file_pkg_proto_configuration_blobstore_blobstore_proto_depIdxs = []int32{
 	6,  // 3: buildbarn.configuration.blobstore.BlobAccessConfiguration.http:type_name -> buildbarn.configuration.blobstore.HTTPBlobAccessConfiguration
 	2,  // 4: buildbarn.configuration.blobstore.BlobAccessConfiguration.read_caching:type_name -> buildbarn.configuration.blobstore.ReadCachingBlobAccessConfiguration
 	8,  // 5: buildbarn.configuration.blobstore.BlobAccessConfiguration.size_distinguishing:type_name -> buildbarn.configuration.blobstore.SizeDistinguishingBlobAccessConfiguration
-	34, // 6: buildbarn.configuration.blobstore.BlobAccessConfiguration.grpc:type_name -> buildbarn.configuration.grpc.ClientConfiguration
-	35, // 7: buildbarn.configuration.blobstore.BlobAccessConfiguration.error:type_name -> google.rpc.Status
+	35, // 6: buildbarn.configuration.blobstore.BlobAccessConfiguration.grpc:type_name -> buildbarn.configuration.grpc.ClientConfiguration
+	36, // 7: buildbarn.configuration.blobstore.BlobAccessConfiguration.error:type_name -> google.rpc.Status
 	7,  // 8: buildbarn.configuration.blobstore.BlobAccessConfiguration.sharding:type_name -> buildbarn.configuration.blobstore.ShardingBlobAccessConfiguration
 	9,  // 9: buildbarn.configuration.blobstore.BlobAccessConfiguration.mirrored:type_name -> buildbarn.configuration.blobstore.MirroredBlobAccessConfiguration
 	10, // 10: buildbarn.configuration.blobstore.BlobAccessConfiguration.local:type_name -> buildbarn.configuration.blobstore.LocalBlobAccessConfiguration
@@ -3357,16 +3390,16 @@ var file_pkg_proto_configuration_blobstore_blobstore_proto_depIdxs = []int32{
 	1,  // 24: buildbarn.configuration.blobstore.ReadCachingBlobAccessConfiguration.slow:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
 	1,  // 25: buildbarn.configuration.blobstore.ReadCachingBlobAccessConfiguration.fast:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
 	15, // 26: buildbarn.configuration.blobstore.ReadCachingBlobAccessConfiguration.replicator:type_name -> buildbarn.configuration.blobstore.BlobReplicatorConfiguration
-	36, // 27: buildbarn.configuration.blobstore.ClusteredRedisBlobAccessConfiguration.minimum_retry_backoff:type_name -> google.protobuf.Duration
-	36, // 28: buildbarn.configuration.blobstore.ClusteredRedisBlobAccessConfiguration.maximum_retry_backoff:type_name -> google.protobuf.Duration
+	37, // 27: buildbarn.configuration.blobstore.ClusteredRedisBlobAccessConfiguration.minimum_retry_backoff:type_name -> google.protobuf.Duration
+	37, // 28: buildbarn.configuration.blobstore.ClusteredRedisBlobAccessConfiguration.maximum_retry_backoff:type_name -> google.protobuf.Duration
 	3,  // 29: buildbarn.configuration.blobstore.RedisBlobAccessConfiguration.clustered:type_name -> buildbarn.configuration.blobstore.ClusteredRedisBlobAccessConfiguration
 	4,  // 30: buildbarn.configuration.blobstore.RedisBlobAccessConfiguration.single:type_name -> buildbarn.configuration.blobstore.SingleRedisBlobAccessConfiguration
-	37, // 31: buildbarn.configuration.blobstore.RedisBlobAccessConfiguration.tls:type_name -> buildbarn.configuration.tls.ClientConfiguration
-	36, // 32: buildbarn.configuration.blobstore.RedisBlobAccessConfiguration.replication_timeout:type_name -> google.protobuf.Duration
-	36, // 33: buildbarn.configuration.blobstore.RedisBlobAccessConfiguration.dial_timeout:type_name -> google.protobuf.Duration
-	36, // 34: buildbarn.configuration.blobstore.RedisBlobAccessConfiguration.read_timeout:type_name -> google.protobuf.Duration
-	36, // 35: buildbarn.configuration.blobstore.RedisBlobAccessConfiguration.write_timeout:type_name -> google.protobuf.Duration
-	38, // 36: buildbarn.configuration.blobstore.HTTPBlobAccessConfiguration.client:type_name -> buildbarn.configuration.http.ClientConfiguration
+	38, // 31: buildbarn.configuration.blobstore.RedisBlobAccessConfiguration.tls:type_name -> buildbarn.configuration.tls.ClientConfiguration
+	37, // 32: buildbarn.configuration.blobstore.RedisBlobAccessConfiguration.replication_timeout:type_name -> google.protobuf.Duration
+	37, // 33: buildbarn.configuration.blobstore.RedisBlobAccessConfiguration.dial_timeout:type_name -> google.protobuf.Duration
+	37, // 34: buildbarn.configuration.blobstore.RedisBlobAccessConfiguration.read_timeout:type_name -> google.protobuf.Duration
+	37, // 35: buildbarn.configuration.blobstore.RedisBlobAccessConfiguration.write_timeout:type_name -> google.protobuf.Duration
+	39, // 36: buildbarn.configuration.blobstore.HTTPBlobAccessConfiguration.client:type_name -> buildbarn.configuration.http.ClientConfiguration
 	26, // 37: buildbarn.configuration.blobstore.ShardingBlobAccessConfiguration.shards:type_name -> buildbarn.configuration.blobstore.ShardingBlobAccessConfiguration.Shard
 	1,  // 38: buildbarn.configuration.blobstore.SizeDistinguishingBlobAccessConfiguration.small:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
 	1,  // 39: buildbarn.configuration.blobstore.SizeDistinguishingBlobAccessConfiguration.large:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
@@ -3375,53 +3408,55 @@ var file_pkg_proto_configuration_blobstore_blobstore_proto_depIdxs = []int32{
 	15, // 42: buildbarn.configuration.blobstore.MirroredBlobAccessConfiguration.replicator_a_to_b:type_name -> buildbarn.configuration.blobstore.BlobReplicatorConfiguration
 	15, // 43: buildbarn.configuration.blobstore.MirroredBlobAccessConfiguration.replicator_b_to_a:type_name -> buildbarn.configuration.blobstore.BlobReplicatorConfiguration
 	27, // 44: buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.key_location_map_in_memory:type_name -> buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.KeyLocationMapInMemory
-	39, // 45: buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.key_location_map_on_block_device:type_name -> buildbarn.configuration.blockdevice.Configuration
+	40, // 45: buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.key_location_map_on_block_device:type_name -> buildbarn.configuration.blockdevice.Configuration
 	28, // 46: buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.blocks_in_memory:type_name -> buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.BlocksInMemory
 	29, // 47: buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.blocks_on_block_device:type_name -> buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.BlocksOnBlockDevice
 	30, // 48: buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.persistent:type_name -> buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.Persistent
 	1,  // 49: buildbarn.configuration.blobstore.ExistenceCachingBlobAccessConfiguration.backend:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
-	40, // 50: buildbarn.configuration.blobstore.ExistenceCachingBlobAccessConfiguration.existence_cache:type_name -> buildbarn.configuration.digest.ExistenceCacheConfiguration
+	41, // 50: buildbarn.configuration.blobstore.ExistenceCachingBlobAccessConfiguration.existence_cache:type_name -> buildbarn.configuration.digest.ExistenceCacheConfiguration
 	1,  // 51: buildbarn.configuration.blobstore.CompletenessCheckingBlobAccessConfiguration.backend:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
 	1,  // 52: buildbarn.configuration.blobstore.ReadFallbackBlobAccessConfiguration.primary:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
 	1,  // 53: buildbarn.configuration.blobstore.ReadFallbackBlobAccessConfiguration.secondary:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
 	15, // 54: buildbarn.configuration.blobstore.ReadFallbackBlobAccessConfiguration.replicator:type_name -> buildbarn.configuration.blobstore.BlobReplicatorConfiguration
 	1,  // 55: buildbarn.configuration.blobstore.ReferenceExpandingBlobAccessConfiguration.indirect_content_addressable_storage:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
-	41, // 56: buildbarn.configuration.blobstore.ReferenceExpandingBlobAccessConfiguration.aws_session:type_name -> buildbarn.configuration.cloud.aws.SessionConfiguration
-	38, // 57: buildbarn.configuration.blobstore.ReferenceExpandingBlobAccessConfiguration.http_client:type_name -> buildbarn.configuration.http.ClientConfiguration
-	42, // 58: buildbarn.configuration.blobstore.ReferenceExpandingBlobAccessConfiguration.gcp_client_options:type_name -> buildbarn.configuration.cloud.gcp.ClientOptionsConfiguration
-	43, // 59: buildbarn.configuration.blobstore.BlobReplicatorConfiguration.local:type_name -> google.protobuf.Empty
-	34, // 60: buildbarn.configuration.blobstore.BlobReplicatorConfiguration.remote:type_name -> buildbarn.configuration.grpc.ClientConfiguration
+	42, // 56: buildbarn.configuration.blobstore.ReferenceExpandingBlobAccessConfiguration.aws_session:type_name -> buildbarn.configuration.cloud.aws.SessionConfiguration
+	39, // 57: buildbarn.configuration.blobstore.ReferenceExpandingBlobAccessConfiguration.http_client:type_name -> buildbarn.configuration.http.ClientConfiguration
+	43, // 58: buildbarn.configuration.blobstore.ReferenceExpandingBlobAccessConfiguration.gcp_client_options:type_name -> buildbarn.configuration.cloud.gcp.ClientOptionsConfiguration
+	44, // 59: buildbarn.configuration.blobstore.BlobReplicatorConfiguration.local:type_name -> google.protobuf.Empty
+	35, // 60: buildbarn.configuration.blobstore.BlobReplicatorConfiguration.remote:type_name -> buildbarn.configuration.grpc.ClientConfiguration
 	16, // 61: buildbarn.configuration.blobstore.BlobReplicatorConfiguration.queued:type_name -> buildbarn.configuration.blobstore.QueuedBlobReplicatorConfiguration
-	43, // 62: buildbarn.configuration.blobstore.BlobReplicatorConfiguration.noop:type_name -> google.protobuf.Empty
+	44, // 62: buildbarn.configuration.blobstore.BlobReplicatorConfiguration.noop:type_name -> google.protobuf.Empty
 	15, // 63: buildbarn.configuration.blobstore.BlobReplicatorConfiguration.deduplicating:type_name -> buildbarn.configuration.blobstore.BlobReplicatorConfiguration
 	17, // 64: buildbarn.configuration.blobstore.BlobReplicatorConfiguration.concurrency_limiting:type_name -> buildbarn.configuration.blobstore.ConcurrencyLimitingBlobReplicatorConfiguration
 	15, // 65: buildbarn.configuration.blobstore.QueuedBlobReplicatorConfiguration.base:type_name -> buildbarn.configuration.blobstore.BlobReplicatorConfiguration
-	40, // 66: buildbarn.configuration.blobstore.QueuedBlobReplicatorConfiguration.existence_cache:type_name -> buildbarn.configuration.digest.ExistenceCacheConfiguration
+	41, // 66: buildbarn.configuration.blobstore.QueuedBlobReplicatorConfiguration.existence_cache:type_name -> buildbarn.configuration.digest.ExistenceCacheConfiguration
 	15, // 67: buildbarn.configuration.blobstore.ConcurrencyLimitingBlobReplicatorConfiguration.base:type_name -> buildbarn.configuration.blobstore.BlobReplicatorConfiguration
 	31, // 68: buildbarn.configuration.blobstore.DemultiplexingBlobAccessConfiguration.instance_name_prefixes:type_name -> buildbarn.configuration.blobstore.DemultiplexingBlobAccessConfiguration.InstanceNamePrefixesEntry
 	1,  // 69: buildbarn.configuration.blobstore.DemultiplexedBlobAccessConfiguration.backend:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
 	1,  // 70: buildbarn.configuration.blobstore.ActionResultExpiringBlobAccessConfiguration.backend:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
-	36, // 71: buildbarn.configuration.blobstore.ActionResultExpiringBlobAccessConfiguration.minimum_validity:type_name -> google.protobuf.Duration
-	36, // 72: buildbarn.configuration.blobstore.ActionResultExpiringBlobAccessConfiguration.maximum_validity_jitter:type_name -> google.protobuf.Duration
+	37, // 71: buildbarn.configuration.blobstore.ActionResultExpiringBlobAccessConfiguration.minimum_validity:type_name -> google.protobuf.Duration
+	37, // 72: buildbarn.configuration.blobstore.ActionResultExpiringBlobAccessConfiguration.maximum_validity_jitter:type_name -> google.protobuf.Duration
 	1,  // 73: buildbarn.configuration.blobstore.ReadCanaryingBlobAccessConfiguration.source:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
 	1,  // 74: buildbarn.configuration.blobstore.ReadCanaryingBlobAccessConfiguration.replica:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
-	36, // 75: buildbarn.configuration.blobstore.ReadCanaryingBlobAccessConfiguration.maximum_cache_duration:type_name -> google.protobuf.Duration
-	40, // 76: buildbarn.configuration.blobstore.ZIPBlobAccessConfiguration.data_integrity_validation_cache:type_name -> buildbarn.configuration.digest.ExistenceCacheConfiguration
+	37, // 75: buildbarn.configuration.blobstore.ReadCanaryingBlobAccessConfiguration.maximum_cache_duration:type_name -> google.protobuf.Duration
+	41, // 76: buildbarn.configuration.blobstore.ZIPBlobAccessConfiguration.data_integrity_validation_cache:type_name -> buildbarn.configuration.digest.ExistenceCacheConfiguration
 	1,  // 77: buildbarn.configuration.blobstore.WithLabelsBlobAccessConfiguration.backend:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
 	32, // 78: buildbarn.configuration.blobstore.WithLabelsBlobAccessConfiguration.labels:type_name -> buildbarn.configuration.blobstore.WithLabelsBlobAccessConfiguration.LabelsEntry
-	33, // 79: buildbarn.configuration.blobstore.ShardedMultiGenerationBlobAccessConfiguration.Shards:type_name -> buildbarn.configuration.blobstore.ShardedMultiGenerationBlobAccessConfiguration.Shard
-	1,  // 80: buildbarn.configuration.blobstore.ShardingBlobAccessConfiguration.Shard.backend:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
-	39, // 81: buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.BlocksOnBlockDevice.source:type_name -> buildbarn.configuration.blockdevice.Configuration
-	40, // 82: buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.BlocksOnBlockDevice.data_integrity_validation_cache:type_name -> buildbarn.configuration.digest.ExistenceCacheConfiguration
-	36, // 83: buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.Persistent.minimum_epoch_interval:type_name -> google.protobuf.Duration
-	19, // 84: buildbarn.configuration.blobstore.DemultiplexingBlobAccessConfiguration.InstanceNamePrefixesEntry.value:type_name -> buildbarn.configuration.blobstore.DemultiplexedBlobAccessConfiguration
-	1,  // 85: buildbarn.configuration.blobstore.WithLabelsBlobAccessConfiguration.LabelsEntry.value:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
-	1,  // 86: buildbarn.configuration.blobstore.ShardedMultiGenerationBlobAccessConfiguration.Shard.backend:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
-	87, // [87:87] is the sub-list for method output_type
-	87, // [87:87] is the sub-list for method input_type
-	87, // [87:87] is the sub-list for extension type_name
-	87, // [87:87] is the sub-list for extension extendee
-	0,  // [0:87] is the sub-list for field type_name
+	33, // 79: buildbarn.configuration.blobstore.MultiGenerationBlobAccessConfiguration.crew:type_name -> buildbarn.configuration.blobstore.MultiGenerationBlobAccessConfiguration.Shard
+	34, // 80: buildbarn.configuration.blobstore.ShardedMultiGenerationBlobAccessConfiguration.Shards:type_name -> buildbarn.configuration.blobstore.ShardedMultiGenerationBlobAccessConfiguration.Shard
+	1,  // 81: buildbarn.configuration.blobstore.ShardingBlobAccessConfiguration.Shard.backend:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
+	40, // 82: buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.BlocksOnBlockDevice.source:type_name -> buildbarn.configuration.blockdevice.Configuration
+	41, // 83: buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.BlocksOnBlockDevice.data_integrity_validation_cache:type_name -> buildbarn.configuration.digest.ExistenceCacheConfiguration
+	37, // 84: buildbarn.configuration.blobstore.LocalBlobAccessConfiguration.Persistent.minimum_epoch_interval:type_name -> google.protobuf.Duration
+	19, // 85: buildbarn.configuration.blobstore.DemultiplexingBlobAccessConfiguration.InstanceNamePrefixesEntry.value:type_name -> buildbarn.configuration.blobstore.DemultiplexedBlobAccessConfiguration
+	1,  // 86: buildbarn.configuration.blobstore.WithLabelsBlobAccessConfiguration.LabelsEntry.value:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
+	1,  // 87: buildbarn.configuration.blobstore.MultiGenerationBlobAccessConfiguration.Shard.backend:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
+	1,  // 88: buildbarn.configuration.blobstore.ShardedMultiGenerationBlobAccessConfiguration.Shard.backend:type_name -> buildbarn.configuration.blobstore.BlobAccessConfiguration
+	89, // [89:89] is the sub-list for method output_type
+	89, // [89:89] is the sub-list for method input_type
+	89, // [89:89] is the sub-list for extension type_name
+	89, // [89:89] is the sub-list for extension extendee
+	0,  // [0:89] is the sub-list for field type_name
 }
 
 func init() { file_pkg_proto_configuration_blobstore_blobstore_proto_init() }
@@ -3803,6 +3838,18 @@ func file_pkg_proto_configuration_blobstore_blobstore_proto_init() {
 			}
 		}
 		file_pkg_proto_configuration_blobstore_blobstore_proto_msgTypes[33].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*MultiGenerationBlobAccessConfiguration_Shard); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_pkg_proto_configuration_blobstore_blobstore_proto_msgTypes[34].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*ShardedMultiGenerationBlobAccessConfiguration_Shard); i {
 			case 0:
 				return &v.state
@@ -3864,7 +3911,7 @@ func file_pkg_proto_configuration_blobstore_blobstore_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_pkg_proto_configuration_blobstore_blobstore_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   34,
+			NumMessages:   35,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

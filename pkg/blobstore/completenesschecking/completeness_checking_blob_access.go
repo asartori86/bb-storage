@@ -2,7 +2,6 @@ package completenesschecking
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
@@ -144,7 +143,6 @@ func (ba *completenessCheckingBlobAccess) checkCompleteness(ctx context.Context,
 		if err != nil {
 			return err
 		}
-		fmt.Printf("\n\nderived digest:%v\n\n", treeDigest)
 		if treeDigest.GetDigestFunction().GetEnumValue() == remoteexecution.DigestFunction_GITSHA1 {
 			if err := findMissingQueue.add(outputDirectory.TreeDigest); err != nil {
 				return err
