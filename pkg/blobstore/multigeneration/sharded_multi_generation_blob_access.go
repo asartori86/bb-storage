@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"log"
 
-	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/buildbarn/bb-storage/pkg/blobstore"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/buffer"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/slicing"
+	"github.com/buildbarn/bb-storage/pkg/capabilities"
 	"github.com/buildbarn/bb-storage/pkg/digest"
 	emptyblobs "github.com/buildbarn/bb-storage/pkg/empty_blobs"
 	"github.com/buildbarn/bb-storage/pkg/util"
@@ -16,12 +16,15 @@ import (
 )
 
 type ShardedMultiGenerationBlobAccess struct {
+	capabilities.Provider
+
 	nShards  uint32
 	backends []blobstore.BlobAccess
 }
 
-func NewShardedMultiGenerationBlobAccess(backends []blobstore.BlobAccess) *ShardedMultiGenerationBlobAccess {
+func NewShardedMultiGenerationBlobAccess(backends []blobstore.BlobAccess, capabilitiesProvider capabilities.Provider) *ShardedMultiGenerationBlobAccess {
 	x := &ShardedMultiGenerationBlobAccess{
+		Provider: capabilitiesProvider,
 		nShards:  uint32(len(backends)),
 		backends: backends,
 	}
@@ -112,8 +115,4 @@ func (m *ShardedMultiGenerationBlobAccess) FindMissing(ctx context.Context, dige
 	}
 
 	return digest.GetUnion(missingPerBackend), nil
-}
-
-func (ba *ShardedMultiGenerationBlobAccess) GetCapabilities(ctx context.Context, instanceName digest.InstanceName) (*remoteexecution.ServerCapabilities, error) {
-	return nil, nil
 }

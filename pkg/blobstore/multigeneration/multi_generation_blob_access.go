@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/buildbarn/bb-storage/pkg/blobstore"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/buffer"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/slicing"
+	"github.com/buildbarn/bb-storage/pkg/capabilities"
 	"github.com/buildbarn/bb-storage/pkg/digest"
 	emptyblobs "github.com/buildbarn/bb-storage/pkg/empty_blobs"
 	"github.com/buildbarn/bb-storage/pkg/justbuild"
@@ -30,6 +30,8 @@ type toBeCopied struct {
 var MultiGenerationBlobAccessPtr *multiGenerationBlobAccess
 
 type multiGenerationBlobAccess struct {
+	capabilities.Provider
+
 	minimumRotationSizeBytes        uint64
 	timeIntervalBetweenComputeSizes uint64
 	indexes                         []uint32
@@ -43,7 +45,7 @@ type multiGenerationBlobAccess struct {
 }
 
 func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64, timeInterval uint64,
-	rootDir string, nShardsSingleGen uint32, crew []blobstore.BlobAccess) *multiGenerationBlobAccess {
+	rootDir string, nShardsSingleGen uint32, crew []blobstore.BlobAccess, capabilitiesProvider capabilities.Provider) *multiGenerationBlobAccess {
 	if nGenerations <= 1 {
 		log.Panicf("ERROR: multiGenerationBlobAccess requires generations > 1 but got %d", nGenerations)
 	}
@@ -65,6 +67,7 @@ func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64,
 	}
 	n.Wait()
 	ba := multiGenerationBlobAccess{
+		Provider:                        capabilitiesProvider,
 		nShards:                         uint32(len(crew)),
 		minimumRotationSizeBytes:        rotationSizeBytes,
 		timeIntervalBetweenComputeSizes: timeInterval,
@@ -331,17 +334,6 @@ func (ba *multiGenerationBlobAccess) rotate() {
 	ba.lastRotationTimeStamp = time.Now().Unix()
 	log.Printf("rotated indexes %v\n", ba.indexes)
 
-}
-
-func (ba *multiGenerationBlobAccess) GetCapabilities(ctx context.Context, instanceName digest.InstanceName) (*remoteexecution.ServerCapabilities, error) {
-	// x:=remoteexecution.ServerCapabilities{
-	// 	CacheCapabilities:     &remoteexecution.CacheCapabilities{},
-	// 	ExecutionCapabilities: &remoteexecution.ExecutionCapabilities{},
-	// 	DeprecatedApiVersion:  &semver.SemVer{},
-	// 	LowApiVersion:         &semver.SemVer{},
-	// 	HighApiVersion:        &semver.SemVer{},
-	// }
-	return nil, nil
 }
 
 func prettyPrintSize(size uint64) string {
