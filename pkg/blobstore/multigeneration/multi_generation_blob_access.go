@@ -189,7 +189,7 @@ func DirectDependencySet(bytes []byte, dgst digest.Digest) (digest.Set, error) {
 	return setBuilder.Build(), nil
 }
 
-func (ba *multiGenerationBlobAccess) checkLeaves(ctx context.Context, dgst digest.Digest, bytes []byte) error {
+func (ba *multiGenerationBlobAccess) checkCompleteness(ctx context.Context, dgst digest.Digest, bytes []byte) error {
 	// make sure all leaves are present in the current generation
 	// if at least one leaf is missing it will error out
 	leaves, err := DirectDependencySet(bytes, dgst)
@@ -243,11 +243,6 @@ func (ba *multiGenerationBlobAccess) checkLeaves(ctx context.Context, dgst diges
 	return nil
 }
 
-func (ba *multiGenerationBlobAccess) checkCompleteness(ctx context.Context, tree digest.Digest, treeBuf []byte) error {
-	// the presence of tree has already been checked, so we just check the leaves before uplinking it
-	return ba.checkLeaves(ctx, tree, treeBuf)
-}
-
 func (ba *multiGenerationBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {
 	hash := digest.GetHashString()
 
@@ -280,7 +275,7 @@ func (ba *multiGenerationBlobAccess) Put(ctx context.Context, digest digest.Dige
 		return err
 	}
 
-	err = ba.checkLeaves(ctx, digest, bytes)
+	err = ba.checkCompleteness(ctx, digest, bytes)
 	if err != nil {
 		return err
 	}
@@ -302,7 +297,7 @@ func (ba *multiGenerationBlobAccess) FindMissing(ctx context.Context, digests di
 		found = append(found, up...)
 	}
 
-	incomplete := digest.SetBuilder{}
+	incomplete := digest.NewSetBuilder()
 	currentIdx := ba.currentIndex()
 	for _, x := range found {
 		if x.idx != currentIdx {
