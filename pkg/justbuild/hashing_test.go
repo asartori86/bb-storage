@@ -82,10 +82,6 @@ func TestTreeHash3(t *testing.T) {
 	entries := append([]byte(fmt.Sprintf("%o %s\x00", 0o40000, "bar")), bar...)
 	entries = append(entries, append([]byte(fmt.Sprintf("%o %s\x00", 0o100644, "foo.txt")), fooTxt...)...)
 
-	m, err := justbuild.ToDirectoryMessage(entries)
-	if err != nil {
-		t.Log(m)
-	}
 	refStr := "a7f6c6416b73d97b06aade7851a4a989761959f6"
 	ref, _ := hex.DecodeString(refStr)
 	if x := justbuild.GitTreeID(entries); !bytes.Equal(x, ref) {
