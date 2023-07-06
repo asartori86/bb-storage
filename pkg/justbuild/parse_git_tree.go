@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-
-	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 )
 
 func getName(data []byte) (string, int) {
@@ -22,6 +20,7 @@ const (
 	RegularFile    BlobType = 0
 	ExecutableFile BlobType = 1
 	Tree           BlobType = 2
+	Symlink        BlobType = 3
 )
 
 func IsJustbuildTree(hash string) bool {
@@ -38,9 +37,11 @@ func GetTaggedHashes(entries []byte) ([]string, []BlobType, []string, error) {
 	dirTag := []byte(fmt.Sprintf("%o", 0o40000))
 	exeFile := []byte(fmt.Sprintf("%o", 0o100755))
 	regFile := []byte(fmt.Sprintf("%o", 0o100644))
+	symlinkTag := []byte(fmt.Sprintf("%o", 0o120000))
 	const (
 		lenDirTag  = 5
 		lenFileTag = 6
+		lenSymTag  = 6
 		lenHash    = 20
 	)
 	for pos := 0; pos < len(entries); {
@@ -73,47 +74,18 @@ func GetTaggedHashes(entries []byte) ([]string, []BlobType, []string, error) {
 			types = append(types, RegularFile)
 			names = append(names, name)
 			pos += lenHash
+		} else if bytes.Contains(entries[pos:pos+lenSymTag], symlinkTag) {
+			pos += lenSymTag + 1
+			name, x := getName(entries[pos:])
+			pos += x
+			hash := hex.EncodeToString(entries[pos : pos+lenHash])
+			hashes = append(hashes, BlobMarker+hash)
+			types = append(types, Symlink)
+			names = append(names, name)
+			pos += lenHash
 		} else {
 			return nil, nil, nil, fmt.Errorf("unknown tag %s", string(entries[pos:pos+lenFileTag]))
 		}
 	}
 	return hashes, types, names, nil
-}
-
-func ToDirectoryMessage(entries []byte) (*remoteexecution.Directory, error) {
-	var directory remoteexecution.Directory
-	if len(entries) == 0 {
-		return &directory, nil
-	}
-	hashes, types, names, err := GetTaggedHashes(entries)
-	if err != nil {
-		return nil, err
-	}
-	for i, hash := range hashes {
-		blobType := types[i]
-		name := names[i]
-		if blobType == Tree {
-			directory.Directories = append(directory.Directories,
-				&remoteexecution.DirectoryNode{
-					Name:   name,
-					Digest: &remoteexecution.Digest{Hash: hash},
-				})
-		} else if blobType == ExecutableFile {
-			directory.Files = append(directory.Files, &remoteexecution.FileNode{
-				Name:         name,
-				Digest:       &remoteexecution.Digest{Hash: hash},
-				IsExecutable: true,
-			})
-		} else if blobType == RegularFile {
-			directory.Files = append(directory.Files, &remoteexecution.FileNode{
-				Name:         name,
-				Digest:       &remoteexecution.Digest{Hash: hash},
-				IsExecutable: false,
-			})
-
-		} else {
-			return nil, fmt.Errorf("unknown tag %v", blobType)
-		}
-	}
-	return &directory, nil
 }
