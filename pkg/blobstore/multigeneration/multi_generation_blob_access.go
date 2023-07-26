@@ -2,6 +2,7 @@ package multigeneration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -57,12 +58,13 @@ func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64,
 	var indexes = make([]uint32, nGenerations)
 	var generations = make([]*singleGeneration, nGenerations)
 	var n sync.WaitGroup
+	now := time.Now().Unix()
 	for i := uint32(0); i < nGenerations; i++ {
 		n.Add(1)
 		go func(i uint32) {
 			defer n.Done()
 			indexes[i] = i
-			generations[i] = newSingleGeneration(filepath.Join(rootDir, fmt.Sprintf("gen-%d", i)), i, nShardsSingleGen)
+			generations[i] = newSingleGeneration(filepath.Join(rootDir, fmt.Sprintf("gen-%d", i)), i, nShardsSingleGen, now)
 		}(i)
 	}
 	n.Wait()
@@ -76,7 +78,7 @@ func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64,
 		statusLock:                      sync.RWMutex{},
 		generations:                     generations,
 		status:                          mg_proto.MultiGenStatus_OK,
-		lastRotationTimeStamp:           time.Now().Unix(),
+		lastRotationTimeStamp:           now,
 		crew:                            crew,
 	}
 
@@ -90,6 +92,7 @@ func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64,
 		}
 	}()
 	MultiGenerationBlobAccessPtr = &ba
+	MultiGenerationBlobAccessPtr.muninLog()
 	return &ba
 }
 
@@ -328,7 +331,7 @@ func (ba *multiGenerationBlobAccess) rotate() {
 	ba.indexes = rotated
 	ba.lastRotationTimeStamp = time.Now().Unix()
 	log.Printf("rotated indexes %v\n", ba.indexes)
-
+	ba.muninLog()
 }
 
 func prettyPrintSize(size uint64) string {
@@ -352,6 +355,33 @@ func prettyPrintSize(size uint64) string {
 	return fmt.Sprintf("%.2f %s", x, label)
 }
 
+type muninData struct {
+	CurGenSizeBytes uint64
+	CurGenIdx       uint32
+	TimeStamps      []int64
+}
+
+func (ba *multiGenerationBlobAccess) muninLog() {
+	currentIdx := ba.currentIndex()
+	size := ba.generations[currentIdx].curSize
+	nGens := len(ba.indexes)
+	var timeStamps = make([]int64, nGens)
+	for _, i := range ba.indexes {
+		timeStamps[i] = ba.generations[i].lastCleanUpTimeStamp
+	}
+	data := muninData{
+		CurGenSizeBytes: size,
+		CurGenIdx:       currentIdx,
+		TimeStamps:      timeStamps,
+	}
+	marshaled, err := json.Marshal(data)
+	if err == nil {
+		log.Printf("[munin]:%s", string(marshaled))
+	} else {
+		log.Println(err)
+	}
+}
+
 func (ba *multiGenerationBlobAccess) maybeRotate() {
 	currentIdx := ba.currentIndex()
 
@@ -369,6 +399,7 @@ func (ba *multiGenerationBlobAccess) maybeRotate() {
 		}
 	}
 	log.Printf("%s --> %s [threshold = %s], status = %#v\n", ba.generations[currentIdx].dir, prettyPrintSize(size), prettyPrintSize(ba.minimumRotationSizeBytes), ba.status)
+	ba.muninLog()
 }
 
 // implement the ShardedMultiGenerationControllerServer interface
