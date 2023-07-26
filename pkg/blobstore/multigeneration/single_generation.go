@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/buildbarn/bb-storage/pkg/blobstore/buffer"
 	"github.com/buildbarn/bb-storage/pkg/digest"
@@ -41,19 +42,24 @@ func (s *shard) add(h string) {
 }
 
 type singleGeneration struct {
-	dir     string
-	idx     uint32
-	nShards uint32
-	shards  []*shard
-	mutex   sync.RWMutex
+	dir                  string
+	idx                  uint32
+	nShards              uint32
+	shards               []*shard
+	mutex                sync.RWMutex
+	lastCleanUpTimeStamp int64
+	curSize              uint64
 }
 
-func newSingleGeneration(root string, i uint32, nShards uint32) *singleGeneration {
+func newSingleGeneration(root string, i uint32, nShards uint32, timeStamp int64) *singleGeneration {
 	x := singleGeneration{
-		dir:     root,
-		idx:     i,
-		nShards: nShards,
-		shards:  make([]*shard, nShards),
+		dir:                  root,
+		idx:                  i,
+		nShards:              nShards,
+		shards:               make([]*shard, nShards),
+		mutex:                sync.RWMutex{},
+		lastCleanUpTimeStamp: timeStamp,
+		curSize:              0,
 	}
 	x.initShards()
 	// sanity check that we have access to the directory we will handle
@@ -165,6 +171,7 @@ func (c *singleGeneration) reset() {
 		name := filepath.Join(c.dir, f.Name())
 		os.RemoveAll(name)
 	}
+	c.lastCleanUpTimeStamp = time.Now().Unix()
 	c.mutex.Unlock()
 }
 
@@ -238,5 +245,8 @@ func (c *singleGeneration) size() uint64 {
 			size += x.Size()
 		}
 	}
-	return uint64(size)
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.curSize = uint64(size)
+	return c.curSize
 }
