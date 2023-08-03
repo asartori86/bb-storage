@@ -331,7 +331,6 @@ func (ba *multiGenerationBlobAccess) rotate() {
 	ba.indexes = rotated
 	ba.lastRotationTimeStamp = time.Now().Unix()
 	log.Printf("rotated indexes %v\n", ba.indexes)
-	ba.muninLog()
 }
 
 func prettyPrintSize(size uint64) string {
@@ -433,6 +432,7 @@ func (c *multiGenerationBlobAccess) DoRotate(ctx context.Context, in *emptypb.Em
 	c.rotate()
 	defer c.rotateLock.Unlock()
 	c.generations[next].reset()
+	c.muninLog()
 	c.statusLock.Lock()
 	defer c.statusLock.Unlock()
 	c.status = mg_proto.MultiGenStatus_OK
@@ -444,6 +444,7 @@ func (c *multiGenerationBlobAccess) DoReset(ctx context.Context, in *emptypb.Emp
 	for i := range c.indexes {
 		c.generations[i].reset()
 	}
+	c.muninLog()
 	c.rotateLock.Unlock()
 	c.statusLock.Lock()
 	defer c.statusLock.Unlock()
