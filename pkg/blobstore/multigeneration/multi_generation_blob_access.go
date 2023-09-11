@@ -126,7 +126,7 @@ func (ba *multiGenerationBlobAccess) getFromGen(hash string, gen uint32) ([]byte
 			}
 		}
 	}
-	log.Printf("%s should be present in cas but it is missing\n", hash)
+	log.Printf("%s should be present in cas but it is missing. Triggering CAS reset.\n", hash)
 	ba.statusLock.Lock()
 	defer ba.statusLock.Unlock()
 	ba.status = mg_proto.MultiGenStatus_RESET_NEEDED
@@ -145,13 +145,19 @@ func (ba *multiGenerationBlobAccess) Get(ctx context.Context, dgst digest.Digest
 		if ba.generations[i].has(hash) {
 			dat, gen := ba.getFromGen(hash, i)
 			if dat == nil {
-				return buffer.NewBufferFromError(fmt.Errorf("%s could not be retrieved from cas: has_gen %d, got nil from %d", dgst.String(), i, gen))
+				ba.statusLock.Lock()
+				defer ba.statusLock.Unlock()
+				ba.status = mg_proto.MultiGenStatus_RESET_NEEDED
+				return buffer.NewBufferFromError(fmt.Errorf("%s could not be retrieved from cas: has_gen %d, got nil from %d. CAS will be reset. Please try again.", dgst.String(), i, gen))
 			}
 			if gen != currentIdx {
 				if justbuild.IsJustbuildTree(hash) {
 					err := ba.checkCompleteness(ctx, dgst, dat)
 					if err != nil {
-						return buffer.NewBufferFromError(err)
+						ba.statusLock.Lock()
+						defer ba.statusLock.Unlock()
+						ba.status = mg_proto.MultiGenStatus_RESET_NEEDED
+						return buffer.NewBufferFromError(fmt.Errorf("%s. CAS will be reset. Please try again.", err))
 					}
 				}
 				ba.generations[currentIdx].uplink(hash, ba.generations[gen].dir)
@@ -159,7 +165,10 @@ func (ba *multiGenerationBlobAccess) Get(ctx context.Context, dgst digest.Digest
 			return buffer.NewValidatedBufferFromByteSlice(dat)
 		}
 	}
-	return buffer.NewBufferFromError(fmt.Errorf("%s could not be retrieved from cas", dgst.String()))
+	ba.statusLock.Lock()
+	defer ba.statusLock.Unlock()
+	ba.status = mg_proto.MultiGenStatus_RESET_NEEDED
+	return buffer.NewBufferFromError(fmt.Errorf("%s could not be retrieved from cas. CAS will be reset. Please try again.", dgst.String()))
 }
 
 func (ba *multiGenerationBlobAccess) GetFromComposite(ctx context.Context, parentDigest, childDigest digest.Digest, slicer slicing.BlobSlicer) buffer.Buffer {
@@ -309,6 +318,7 @@ func (ba *multiGenerationBlobAccess) FindMissing(ctx context.Context, digests di
 				err := ba.checkCompleteness(ctx, x.dgst, data)
 				if err != nil {
 					// incomplete tree: tell the user to re-upload the whole tree
+					log.Printf("incomplete tree %s detected: %s", x.dgst.String(), err)
 					incomplete.Add(x.dgst)
 					continue
 				}
@@ -382,8 +392,9 @@ func (ba *multiGenerationBlobAccess) muninLog() {
 }
 
 func (ba *multiGenerationBlobAccess) maybeRotate() {
+	ba.rotateLock.RLock()
+	defer ba.rotateLock.RUnlock()
 	currentIdx := ba.currentIndex()
-
 	size := ba.generations[currentIdx].size()
 	checkTime := time.Now().Unix()
 	if size >= ba.minimumRotationSizeBytes {
@@ -440,8 +451,11 @@ func (c *multiGenerationBlobAccess) DoRotate(ctx context.Context, in *emptypb.Em
 }
 
 func (c *multiGenerationBlobAccess) DoReset(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
-	log.Printf("Resetting the whole cache")
-	for i := range c.indexes {
+	log.Printf("Resetting all generations")
+	n := uint32(len(c.indexes))
+	for i := uint32(0); i < n; i++ {
+		// also reset the indexes such that all storage pods restart from the same generation number
+		c.indexes[i] = i
 		c.generations[i].reset()
 	}
 	c.muninLog()
