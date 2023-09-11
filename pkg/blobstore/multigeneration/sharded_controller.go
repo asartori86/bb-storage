@@ -83,19 +83,20 @@ func (c *shardedMultiGenerationController) check() {
 		return
 	}
 
-	// if status == mg_proto.MultiGenStatus_ROTATION_NEEDED {
-	err = c.callRotate(ctx)
-	if err == nil {
-		//all good
-		return
-	} else {
-		log.Printf("Could not perform complete rotation: %v. retrying later\n", err)
+	if status == mg_proto.MultiGenStatus_ROTATION_NEEDED {
+		err = c.callRotate(ctx)
+		if err == nil {
+			//all good
+			return
+		} else {
+			log.Printf("Could not perform complete rotation: %v. retrying later\n", err)
+			return
+		}
 	}
-	// }
-	// if err != nil || status == mg_proto.MultiGenStatus_RESET_NEEDED {
-	// 	log.Printf("resetting")
-	// 	c.callReset(ctx)
-	// }
+	if status == mg_proto.MultiGenStatus_RESET_NEEDED {
+		log.Printf("resetting")
+		c.callReset(ctx)
+	}
 
 }
 
