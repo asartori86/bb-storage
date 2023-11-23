@@ -32,8 +32,9 @@ func NewShardedMultiGenerationBlobAccess(backends []blobstore.BlobAccess, capabi
 }
 
 func (m *ShardedMultiGenerationBlobAccess) Get(ctx context.Context, digest digest.Digest) buffer.Buffer {
+	i := uint32(0)
 	hash := digest.GetHashString()
-	i := FNV(hash, m.nShards)
+	i = FNV(hash, m.nShards)
 	b := m.backends[i].Get(ctx, digest)
 	return b
 }
@@ -54,30 +55,18 @@ func (ba *ShardedMultiGenerationBlobAccess) GetFromComposite(ctx context.Context
 	return ba.Get(ctx, childDigest)
 }
 
-func (m *ShardedMultiGenerationBlobAccess) checkCompleteness(ctx context.Context, digests digest.Set, tree digest.Digest) error {
-	missing, err := m.FindMissing(ctx, digests)
-	if err != nil {
-		return err
-	}
-	if !missing.Empty() {
-		msg := fmt.Sprintf("incorrect tree upload detected. Tree %s misses these direct dependencies %v\n", tree, missing.Items())
-		log.Printf(msg)
-		return fmt.Errorf(msg)
-	}
-	return nil
-}
-
 func (m *ShardedMultiGenerationBlobAccess) Put(ctx context.Context, digest digest.Digest, b buffer.Buffer) error {
 	hash := digest.GetHashString()
-	i := FNV(hash, m.nShards)
-
 	if emptyblobs.IsEmptyBlob(hash) {
 		return nil
 	}
+	i := uint32(0)
+	i = FNV(hash, m.nShards)
 	return m.backends[i].Put(ctx, digest, b)
 }
 
 func (m *ShardedMultiGenerationBlobAccess) FindMissing(ctx context.Context, digests digest.Set) (digest.Set, error) {
+	// Asynchronously call FindMissing() on the shards.
 	digestsPerBackend := make([]digest.SetBuilder, 0, len(m.backends))
 	for range m.backends {
 
@@ -90,7 +79,6 @@ func (m *ShardedMultiGenerationBlobAccess) FindMissing(ctx context.Context, dige
 
 	missingPerBackend := make([]digest.Set, 0, len(m.backends))
 
-	// Asynchronously call FindMissing() on the shards.
 	group, ctxWithCancel := errgroup.WithContext(ctx)
 	for idxIter, digestsIter := range digestsPerBackend {
 		// need local variables to be passed to the go subroutine
