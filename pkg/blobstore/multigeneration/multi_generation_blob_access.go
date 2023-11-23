@@ -3,6 +3,7 @@ package multigeneration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -126,7 +127,7 @@ func (ba *multiGenerationBlobAccess) getFromGen(hash string, gen uint32) ([]byte
 			}
 		}
 	}
-	log.Printf("%s should be present in cas but it is missing. Triggering CAS reset.\n", hash)
+	log.Printf("%s should be present in CAS but it is missing. Triggering CAS reset.\n", hash)
 	ba.statusLock.Lock()
 	defer ba.statusLock.Unlock()
 	ba.status = mg_proto.MultiGenStatus_RESET_NEEDED
@@ -148,19 +149,30 @@ func (ba *multiGenerationBlobAccess) Get(ctx context.Context, dgst digest.Digest
 				ba.statusLock.Lock()
 				defer ba.statusLock.Unlock()
 				ba.status = mg_proto.MultiGenStatus_RESET_NEEDED
-				return buffer.NewBufferFromError(fmt.Errorf("%s could not be retrieved from cas: has_gen %d, got nil from %d. CAS will be reset. Please try again.", dgst.String(), i, gen))
+				err := fmt.Errorf("%s could not be retrieved from cas: has_gen %d, got nil from %d. CAS will be reset. Please try again.", dgst.String(), i, gen)
+				log.Printf(err.Error())
+				return buffer.NewBufferFromError(err)
 			}
 			if gen != currentIdx {
 				if justbuild.IsJustbuildTree(hash) {
+					// we still call this function even if we only have one
+					// shard to properly uplink the recursively referenced
+					// objects.
 					err := ba.checkCompleteness(ctx, dgst, dat)
 					if err != nil {
-						ba.statusLock.Lock()
-						defer ba.statusLock.Unlock()
-						ba.status = mg_proto.MultiGenStatus_RESET_NEEDED
-						return buffer.NewBufferFromError(fmt.Errorf("%s. CAS will be reset. Please try again.", err))
+						incompleteTreeError := &IncompleteTree{}
+						if errors.As(err, &incompleteTreeError) {
+							ba.statusLock.Lock()
+							defer ba.statusLock.Unlock()
+							ba.status = mg_proto.MultiGenStatus_RESET_NEEDED
+							err = util.StatusWrapf(err, "CAS will be reset. Please try again.")
+							log.Printf(err.Error())
+							return buffer.NewBufferFromError(err)
+						}
+						return buffer.NewBufferFromError(err)
 					}
+					ba.generations[currentIdx].uplink(hash, ba.generations[gen].dir)
 				}
-				ba.generations[currentIdx].uplink(hash, ba.generations[gen].dir)
 			}
 			return buffer.NewValidatedBufferFromByteSlice(dat)
 		}
@@ -168,7 +180,9 @@ func (ba *multiGenerationBlobAccess) Get(ctx context.Context, dgst digest.Digest
 	ba.statusLock.Lock()
 	defer ba.statusLock.Unlock()
 	ba.status = mg_proto.MultiGenStatus_RESET_NEEDED
-	return buffer.NewBufferFromError(fmt.Errorf("%s could not be retrieved from cas. CAS will be reset. Please try again.", dgst.String()))
+	err := fmt.Errorf("%s could not be retrieved from cas. CAS will be reset. Please try again.", dgst.String())
+	log.Printf(err.Error())
+	return buffer.NewBufferFromError(err)
 }
 
 func (ba *multiGenerationBlobAccess) GetFromComposite(ctx context.Context, parentDigest, childDigest digest.Digest, slicer slicing.BlobSlicer) buffer.Buffer {
@@ -199,6 +213,14 @@ func DirectDependencySet(bytes []byte, dgst digest.Digest) (digest.Set, error) {
 		setBuilder.Add(curDgst)
 	}
 	return setBuilder.Build(), nil
+}
+
+type IncompleteTree struct {
+	msg string
+}
+
+func (x IncompleteTree) Error() string {
+	return x.msg
 }
 
 func (ba *multiGenerationBlobAccess) checkCompleteness(ctx context.Context, dgst digest.Digest, bytes []byte) error {
@@ -233,6 +255,7 @@ func (ba *multiGenerationBlobAccess) checkCompleteness(ctx context.Context, dgst
 			missingOut := &missingPerBackend[len(missingPerBackend)-1]
 			group.Go(func() error {
 				missing, err := ba.crew[idx].FindMissing(ctxWithCancel, digests.Build())
+
 				if err != nil {
 					return util.StatusWrapf(err, "Shard %d", idx)
 				}
@@ -250,7 +273,7 @@ func (ba *multiGenerationBlobAccess) checkCompleteness(ctx context.Context, dgst
 	missing := digest.GetUnion(missingPerBackend)
 
 	if !missing.Empty() {
-		return fmt.Errorf("Incomplete tree detected %#v: missing leaves are: %#v", dgst, missing)
+		return IncompleteTree{msg: fmt.Sprintf("Incomplete tree detected %#v: missing leaves are: %#v", dgst, missing)}
 	}
 	return nil
 }
@@ -315,10 +338,12 @@ func (ba *multiGenerationBlobAccess) FindMissing(ctx context.Context, digests di
 		if x.idx != currentIdx {
 			if justbuild.IsJustbuildTree(x.dgst.GetHashString()) {
 				data, _ := ba.getFromGen(x.dgst.GetHashString(), x.idx)
+				// Check the completeness to uplink the recursively referenced
+				// objects. If the tree is incomplete, we tell the client to
+				// re-upload the whole tree, marking the whole tree as missing.
 				err := ba.checkCompleteness(ctx, x.dgst, data)
 				if err != nil {
-					// incomplete tree: tell the user to re-upload the whole tree
-					log.Printf("incomplete tree %s detected: %s", x.dgst.String(), err)
+					log.Printf("While checking completeness of %v: ", x.dgst.String(), err)
 					incomplete.Add(x.dgst)
 					continue
 				}
@@ -329,7 +354,6 @@ func (ba *multiGenerationBlobAccess) FindMissing(ctx context.Context, digests di
 	union := []digest.Set{}
 	union = append(union, currentDigests, incomplete.Build())
 	return digest.GetUnion(union), nil
-
 }
 
 // right rotate indexes
@@ -459,7 +483,7 @@ func (c *multiGenerationBlobAccess) DoReset(ctx context.Context, in *emptypb.Emp
 		c.generations[i].reset()
 	}
 	c.muninLog()
-	c.rotateLock.Unlock()
+	defer c.rotateLock.Unlock()
 	c.statusLock.Lock()
 	defer c.statusLock.Unlock()
 	c.status = mg_proto.MultiGenStatus_OK
