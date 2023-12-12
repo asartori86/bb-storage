@@ -2,6 +2,9 @@ package grpcservers
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"log"
 
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/buildbarn/bb-storage/pkg/blobstore"
@@ -145,4 +148,89 @@ func (s *contentAddressableStorageServer) BatchUpdateBlobs(ctx context.Context, 
 
 func (s *contentAddressableStorageServer) GetTree(in *remoteexecution.GetTreeRequest, stream remoteexecution.ContentAddressableStorage_GetTreeServer) error {
 	return status.Error(codes.Unimplemented, "This service does not support downloading directory trees")
+}
+
+func (s *contentAddressableStorageServer) SplitBlob(ctx context.Context, in *remoteexecution.SplitBlobRequest) (*remoteexecution.SplitBlobResponse, error) {
+	if in.BlobDigest == nil {
+		err := status.Error(codes.InvalidArgument, "SplitBlob: no blob digest provided")
+		log.Println(err)
+		return nil, err
+	}
+	log.Printf("SplitBlob(%s)", in.BlobDigest.GetHash())
+	instanceName, err := digest.NewInstanceName(in.InstanceName)
+	if err != nil {
+		err := util.StatusWrapf(err, "SplitBlob: invalid instance name %#v", in.InstanceName)
+		log.Println(err)
+		return nil, err
+	}
+	digestFunction, err := instanceName.GetDigestFunction(remoteexecution.DigestFunction_UNKNOWN, len(in.BlobDigest.GetHash()))
+	if err != nil {
+		err := util.StatusWrapf(err, "SplitBlob: invalid digest length %d", len(in.BlobDigest.GetHash()))
+		log.Println(err)
+		return nil, err
+	}
+	blobDigest, err := digestFunction.NewDigestFromProto(in.BlobDigest)
+	if err != nil {
+		err := util.StatusWrap(err, "SplitBlob: digest generation from proto message failed")
+		log.Println(err)
+		return nil, err
+	}
+	// Check blob existence.
+	inDigests := digest.NewSetBuilder()
+	inDigests.Add(blobDigest)
+	ctxWithCancel, cancel := context.WithCancel(ctx)
+	outDigests, err := s.contentAddressableStorage.FindMissing(ctxWithCancel, inDigests.Build())
+	if !outDigests.Empty() {
+		cancel()
+		err := status.Errorf(codes.NotFound, "SplitBlob: blob not found %s", blobDigest.GetHashString())
+		log.Println(err)
+		return nil, err
+	}
+	ctxWithCancel, _ = context.WithCancel(ctx)
+	blobReader := s.contentAddressableStorage.Get(ctxWithCancel, blobDigest).ToReader()
+	// Split blob into chunks, store each chunk in CAS, and collect chunk
+	// digests.
+	chunker := NewBlobChunker(blobReader, DefaultChunkSize)
+	chunkDigests := []*remoteexecution.Digest{}
+	for {
+		chunk, err := chunker.NextChunk()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			err := util.StatusWrap(err, "SplitBlob: determining next chunk failed")
+			log.Println(err)
+			return nil, err
+		}
+		generator := digestFunction.NewGenerator(int64(chunker.maxChunkSize))
+		_, err = generator.Write(chunk)
+		if err != nil {
+			err := util.StatusWrap(err, "SplitBlob: creating digest generator failed")
+			log.Println(err)
+			return nil, err
+		}
+		chunkDigest := generator.Sum()
+		ctxWithCancel, cancel := context.WithCancel(ctx)
+		err = s.contentAddressableStorage.Put(
+			ctxWithCancel,
+			chunkDigest,
+			buffer.NewCASBufferFromByteSlice(chunkDigest, chunk, buffer.UserProvided))
+		if err != nil {
+			cancel()
+			err := util.StatusWrapf(err, "SplitBlob: storing of chunk failed %s", chunkDigest.GetHashString())
+			log.Println(err)
+			return nil, err
+		}
+		chunkDigests = append(chunkDigests, chunkDigest.GetProto())
+	}
+	str := fmt.Sprintf("Split blob %s:%d into [ ", blobDigest.GetHashString(), blobDigest.GetSizeBytes())
+	for _, chunkDigest := range chunkDigests {
+		str += fmt.Sprintf("%s:%d ", chunkDigest.GetHash(), chunkDigest.GetSizeBytes())
+	}
+	str += "]"
+	log.Println(str)
+	response := &remoteexecution.SplitBlobResponse{
+		ChunkDigests: chunkDigests,
+	}
+	return response, nil
 }

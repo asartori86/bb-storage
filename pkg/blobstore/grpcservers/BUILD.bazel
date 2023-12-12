@@ -9,6 +9,7 @@ go_library(
         "file_system_access_cache_server.go",
         "indirect_content_addressable_storage_server.go",
         "initial_size_class_cache_server.go",
+        "blob_chunker.go",
     ],
     importpath = "github.com/buildbarn/bb-storage/pkg/blobstore/grpcservers",
     visibility = ["//visibility:public"],
