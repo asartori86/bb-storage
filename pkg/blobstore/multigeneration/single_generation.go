@@ -96,8 +96,19 @@ func (c *singleGeneration) shardIdx(key string) uint32 {
 }
 
 func (c *singleGeneration) has(h string) bool {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
 	i := c.shardIdx(h)
-	return c.shards[i].has(h)
+	if c.shards[i].has(h) {
+		return true
+	}
+	name := filepath.Join(c.dir, h)
+	_, err := os.Stat(name)
+	if err == nil {
+		c.addToCache(h)
+		return true
+	}
+	return false
 }
 
 // used to put a new blob into the directory
@@ -197,7 +208,7 @@ func (c *singleGeneration) findMissing(digests digest.Set) (digest.Set, []toBeCo
 		producersWG.Add(1)
 		go func(dgst digest.Digest, h string) {
 			defer producersWG.Done()
-			if i := c.shardIdx(h); c.shards[i].has(h) {
+			if c.has(h) {
 				upstreamChnl <- toBeCopied{dgst: dgst, idx: c.idx}
 			} else {
 				missingChnl <- dgst
