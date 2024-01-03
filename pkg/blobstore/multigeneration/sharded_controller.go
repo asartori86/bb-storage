@@ -61,7 +61,7 @@ func (c *shardedMultiGenerationController) check() {
 	defer cancel()
 	status, err := c.checkStatus(ctx)
 	if err != nil {
-		log.Printf("Could not check all clientes: %s.\nRetry later\n", err)
+		log.Printf("Could not check all clients: %s.\nRetry later\n", err)
 		return
 	}
 
