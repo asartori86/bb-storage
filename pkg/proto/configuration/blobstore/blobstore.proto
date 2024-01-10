@@ -994,6 +994,9 @@ message WithLabelsBlobAccessConfiguration {
   // Number of shards used for the in-memory cache by each single generation.
   uint32 n_shards_single_generation = 6;
 
+  // Number of shards used for the in-memory cache by each single generation.
+  uint32 max_blobs_per_shard = 7;
+
   message Shard{
     BlobAccessConfiguration backend = 1;
   }
