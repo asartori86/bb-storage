@@ -224,8 +224,19 @@ func (c *singleGeneration) has(h string) bool {
 		c.mutex.RUnlock()
 		return true
 	}
+	// to be removed: allow for a smooth transition to blob sharding
+	legacyName := filepath.Join(c.dir, h)
+	_, err = os.Stat(legacyName)
 	c.mutex.RUnlock()
-	return false
+	if err != nil {
+		return false
+	}
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	dst := c.blobPath(h)
+	os.Link(legacyName, dst)
+	c.addToCache(h)
+	return true
 }
 
 // used to put a new blob into the directory
