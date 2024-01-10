@@ -283,7 +283,8 @@ func (nc *simpleNestedBlobAccessCreator) newNestedBlobAccessBare(configuration *
 		}
 		log.Printf("multi_generation pod")
 		return BlobAccessInfo{
-			BlobAccess:      multigeneration.NewMultiGenerationBlobAccess(backend.MultiGeneration.NGenerations, backend.MultiGeneration.MinimumRotationSizeBytes, backend.MultiGeneration.RotationIntervalSeconds, backend.MultiGeneration.RootDir, backend.MultiGeneration.NShardsSingleGeneration, backends, creator.GetDefaultCapabilitiesProvider()),
+			BlobAccess: multigeneration.NewMultiGenerationBlobAccess(backend.MultiGeneration.NGenerations, backend.MultiGeneration.MinimumRotationSizeBytes, backend.MultiGeneration.RotationIntervalSeconds, backend.MultiGeneration.RootDir,
+				backend.MultiGeneration.NShardsSingleGeneration, backend.MultiGeneration.MaxBlobsPerShard, backends, creator.GetDefaultCapabilitiesProvider()),
 			DigestKeyFormat: digest.KeyWithInstance,
 		}, "multi_generation", nil
 	case *pb.BlobAccessConfiguration_ShardedMultiGeneration:

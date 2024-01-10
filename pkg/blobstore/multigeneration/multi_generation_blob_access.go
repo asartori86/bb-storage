@@ -47,7 +47,7 @@ type multiGenerationBlobAccess struct {
 }
 
 func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64, timeInterval uint64,
-	rootDir string, nShardsSingleGen uint32, crew []blobstore.BlobAccess, capabilitiesProvider capabilities.Provider) *multiGenerationBlobAccess {
+	rootDir string, nShardsSingleGen uint32, maxBlobsPerShard uint32, crew []blobstore.BlobAccess, capabilitiesProvider capabilities.Provider) *multiGenerationBlobAccess {
 	if nGenerations <= 1 {
 		log.Panicf("ERROR: multiGenerationBlobAccess requires generations > 1 but got %d", nGenerations)
 	}
@@ -58,17 +58,30 @@ func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64,
 
 	var indexes = make([]uint32, nGenerations)
 	var generations = make([]*singleGeneration, nGenerations)
-	var n sync.WaitGroup
+	var timeStamps = make([]int64, nGenerations)
 	now := time.Now().Unix()
+	interval := time.Duration(timeInterval * uint64(time.Second))
 	for i := uint32(0); i < nGenerations; i++ {
-		n.Add(1)
-		go func(i uint32) {
-			defer n.Done()
-			indexes[i] = i
-			generations[i] = newSingleGeneration(filepath.Join(rootDir, fmt.Sprintf("gen-%d", i)), i, nShardsSingleGen, now)
-		}(i)
+		indexes[i] = i
+		genDir := filepath.Join(rootDir, fmt.Sprintf("gen-%d", i))
+		generations[i], timeStamps[i] = newSingleGeneration(genDir, i, nShardsSingleGen, maxBlobsPerShard, now, interval)
 	}
-	n.Wait()
+
+	// In case the storage pod was restarted or updated and the previous
+	// persistent volume claim is still present, we find the previous current
+	// generation
+	idxCurrentGen := 0
+	currentTimeStamp := now * 0
+	for i, t := range timeStamps {
+		if t > currentTimeStamp {
+			currentTimeStamp = t
+			idxCurrentGen = i
+		}
+	}
+	for indexes[0] != uint32(idxCurrentGen) {
+		indexes = append(indexes[nGenerations-1:], indexes[0:nGenerations-1]...)
+	}
+
 	ba := multiGenerationBlobAccess{
 		Provider:                        capabilitiesProvider,
 		nShards:                         uint32(len(crew)),
@@ -86,7 +99,7 @@ func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64,
 	// spawn goroutine that will periodically check the size of the current generation
 	// if the size is above the given threshold generations will rotate
 	go func() {
-		tick := time.NewTicker(time.Duration(ba.timeIntervalBetweenComputeSizes * uint64(time.Second)))
+		tick := time.NewTicker(interval)
 		for {
 			<-tick.C
 			ba.maybeRotate()
@@ -348,10 +361,7 @@ func (ba *multiGenerationBlobAccess) FindMissing(ctx context.Context, digests di
 // right rotate indexes
 func (ba *multiGenerationBlobAccess) rotate() {
 	n := len(ba.indexes)
-	rotated := make([]uint32, n)
-	copy(rotated[1:], ba.indexes[:n-1])
-	rotated[0] = ba.indexes[n-1]
-	ba.indexes = rotated
+	ba.indexes = append(ba.indexes[n-1:], ba.indexes[:n-1]...)
 	ba.lastRotationTimeStamp = time.Now().Unix()
 	log.Printf("rotated indexes %v\n", ba.indexes)
 }
@@ -385,11 +395,15 @@ type muninData struct {
 
 func (ba *multiGenerationBlobAccess) muninLog() {
 	currentIdx := ba.currentIndex()
+	ba.generations[currentIdx].mutex.RLock()
 	size := ba.generations[currentIdx].curSize
+	ba.generations[currentIdx].mutex.RUnlock()
 	nGens := len(ba.indexes)
 	var timeStamps = make([]int64, nGens)
 	for _, i := range ba.indexes {
+		ba.generations[i].mutex.RLock()
 		timeStamps[i] = ba.generations[i].lastCleanUpTimeStamp
+		ba.generations[i].mutex.RUnlock()
 	}
 	data := muninData{
 		CurGenSizeBytes: size,
@@ -409,17 +423,11 @@ func (ba *multiGenerationBlobAccess) maybeRotate() {
 	defer ba.rotateLock.RUnlock()
 	currentIdx := ba.currentIndex()
 	size := ba.generations[currentIdx].size()
-	checkTime := time.Now().Unix()
 	if size >= ba.minimumRotationSizeBytes {
-		// a rotation could have been triggered by another shard before we
-		// locked. In this case, we don't set the rotation flag to true,
-		// because it would result in a double rotation
-		if checkTime > ba.lastRotationTimeStamp {
-			ba.statusLock.Lock()
-			defer ba.statusLock.Unlock()
-			// just set a flag. the controller will handle it
-			ba.status = mg_proto.MultiGenStatus_ROTATION_NEEDED
-		}
+		ba.statusLock.Lock()
+		defer ba.statusLock.Unlock()
+		// just set a flag. the controller will handle it
+		ba.status = mg_proto.MultiGenStatus_ROTATION_NEEDED
 	}
 	log.Printf("%s --> %s [threshold = %s], status = %#v\n", ba.generations[currentIdx].dir, prettyPrintSize(size), prettyPrintSize(ba.minimumRotationSizeBytes), ba.status)
 	ba.muninLog()

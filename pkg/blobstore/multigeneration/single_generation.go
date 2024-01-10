@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -16,28 +18,84 @@ import (
 	emptyblobs "github.com/buildbarn/bb-storage/pkg/empty_blobs"
 )
 
-type shard struct {
-	cache  map[string]bool
-	rwLock sync.RWMutex
+type Pair struct {
+	Key   string
+	Value time.Time
 }
 
-func newShard() *shard {
-	return &shard{
-		cache:  map[string]bool{},
-		rwLock: sync.RWMutex{},
+type shard struct {
+	cache   map[string]time.Time
+	rwLock  sync.RWMutex
+	ticker  *time.Ticker
+	done    chan (bool)
+	maxSize int
+}
+
+func newShard(timeInterval time.Duration, maxBlobs uint32) *shard {
+	x := shard{
+		cache:   map[string]time.Time{},
+		rwLock:  sync.RWMutex{},
+		ticker:  time.NewTicker(timeInterval),
+		done:    make(chan bool, 1),
+		maxSize: int(maxBlobs),
+	}
+	go func() {
+		for {
+			select {
+			case <-x.done:
+				return
+			case <-x.ticker.C:
+				x.prune()
+			}
+		}
+	}()
+	return &x
+}
+
+func (s *shard) stopTicker() {
+	s.ticker.Stop()
+	s.done <- true
+}
+
+func (s *shard) prune() {
+	s.rwLock.Lock()
+	defer s.rwLock.Unlock()
+	delta := len(s.cache) - s.maxSize
+	if delta > 0 {
+		log.Printf("Pruning cache: number of elements %d exceeds %d", len(s.cache), s.maxSize)
+		list := []Pair{}
+		for k, v := range s.cache {
+			list = append(list, Pair{
+				Key:   k,
+				Value: v,
+			})
+		}
+		sort.SliceStable(list, func(i, j int) bool {
+			return list[i].Value.Before(list[j].Value)
+		})
+		for x := 0; x < delta; x++ {
+			log.Printf("pruning %s [%s]", list[x].Key, list[x].Value)
+			delete(s.cache, list[x].Key)
+		}
 	}
 }
 
 func (s *shard) has(h string) bool {
 	s.rwLock.RLock()
-	b := s.cache[h]
+	_, ok := s.cache[h]
 	s.rwLock.RUnlock()
-	return b
+	if ok {
+		s.rwLock.Lock()
+		defer s.rwLock.Unlock()
+		s.cache[h] = time.Now()
+		return true
+	}
+	return false
 }
 
 func (s *shard) add(h string) {
 	s.rwLock.Lock()
-	s.cache[h] = true
+	s.cache[h] = time.Now()
 	s.rwLock.Unlock()
 }
 
@@ -49,30 +107,78 @@ type singleGeneration struct {
 	mutex                sync.RWMutex
 	lastCleanUpTimeStamp int64
 	curSize              uint64
+	timeInterval         time.Duration
+	maxBlobsPerShard     uint32
 }
 
-func newSingleGeneration(root string, i uint32, nShards uint32, timeStamp int64) *singleGeneration {
-	x := singleGeneration{
-		dir:                  root,
-		idx:                  i,
-		nShards:              nShards,
-		shards:               make([]*shard, nShards),
-		mutex:                sync.RWMutex{},
-		lastCleanUpTimeStamp: timeStamp,
-		curSize:              0,
-	}
-	x.initShards()
+func newSingleGeneration(root string, idx uint32, nShards uint32, maxBlobsPerShard uint32, timeStamp int64, timeInterval time.Duration) (*singleGeneration, int64) {
 	// sanity check that we have access to the directory we will handle
 	_, err := os.ReadDir(root)
 	if err != nil {
 		log.Panicf("Unable to access directory %s", root)
 	}
-	return &x
+
+	// create all possible directories such that we don't need to check when a
+	// blob is added to the cache
+	for i := 0; i < 256; i++ {
+		dir := filepath.Join(root, fmt.Sprintf("%02x", i))
+		err = os.MkdirAll(dir, 0700)
+		if err != nil {
+			log.Panicf("Unable to create directory %s", dir)
+		}
+		_, err = os.Stat(dir)
+		if err != nil {
+			log.Panicf("Unable to access directory %s", dir)
+		}
+	}
+
+	// compute the timestamp of the oldest blob (or directory) present (if any)
+	// to correctly display the cache uptime
+	generationTime := timeStamp
+	mostRecentBlob := timeStamp * 0
+	sizeBytes := 0
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		t := info.ModTime().Unix()
+		if t < generationTime {
+			generationTime = t
+		}
+		if t > mostRecentBlob {
+			mostRecentBlob = t
+		}
+		if !info.IsDir() {
+			sizeBytes += int(info.Size())
+		}
+		return err
+	})
+
+	if err != nil {
+		log.Printf("while traversing %s for computing the oldest time stamp: %#v", root, err)
+	}
+	x := singleGeneration{
+		dir:                  root,
+		idx:                  idx,
+		nShards:              nShards,
+		shards:               make([]*shard, nShards),
+		mutex:                sync.RWMutex{},
+		lastCleanUpTimeStamp: generationTime,
+		curSize:              uint64(sizeBytes),
+		timeInterval:         timeInterval,
+		maxBlobsPerShard:     maxBlobsPerShard,
+	}
+	x.initShards(timeInterval, maxBlobsPerShard)
+	return &x, mostRecentBlob
 }
 
-func (c *singleGeneration) initShards() {
+func (c *singleGeneration) initShards(timeInterval time.Duration, maxBlobs uint32) {
 	for i := uint32(0); i < c.nShards; i++ {
-		c.shards[i] = newShard()
+		c.shards[i] = newShard(timeInterval, maxBlobs)
 	}
 }
 
@@ -91,23 +197,34 @@ func FNV(key string, nShards uint32) uint32 {
 	return hash % nShards
 }
 
+func (c *singleGeneration) blobPathDir(dir, h string) string {
+	d := filepath.Join(dir, h[2:4])
+	return filepath.Join(d, h)
+}
+
+func (c *singleGeneration) blobPath(h string) string {
+	return c.blobPathDir(c.dir, h)
+}
+
 func (c *singleGeneration) shardIdx(key string) uint32 {
 	return FNV(key, c.nShards)
 }
 
 func (c *singleGeneration) has(h string) bool {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
 	i := c.shardIdx(h)
+	c.mutex.RLock()
 	if c.shards[i].has(h) {
+		c.mutex.RUnlock()
 		return true
 	}
-	name := filepath.Join(c.dir, h)
+	name := c.blobPath(h)
 	_, err := os.Stat(name)
 	if err == nil {
 		c.addToCache(h)
+		c.mutex.RUnlock()
 		return true
 	}
+	c.mutex.RUnlock()
 	return false
 }
 
@@ -126,16 +243,14 @@ func (c *singleGeneration) put(ctx context.Context, digest digest.Digest, b buff
 	if err != nil {
 		return err
 	}
-	name := filepath.Join(c.dir, hash)
+	name := c.blobPath(hash)
 	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	err = os.WriteFile(name, slice, 0644)
-	c.mutex.Unlock()
 	if err != nil {
 		return err
 	}
-	c.mutex.RLock()
 	data, err := os.ReadFile(name)
-	c.mutex.RUnlock()
 	if err != nil {
 		return err
 	}
@@ -144,6 +259,7 @@ func (c *singleGeneration) put(ctx context.Context, digest digest.Digest, b buff
 	sum := hasher.Sum(nil)
 	expectedHash := digest.GetHashBytes()
 	if bytes.Compare(expectedHash, sum) != 0 {
+		os.Remove(name)
 		return fmt.Errorf("failed to store blob %s: buffer has checksum %s, while %s was expected",
 			digest,
 			hex.EncodeToString(sum),
@@ -161,11 +277,11 @@ func (c *singleGeneration) addToCache(hash string) {
 }
 
 func (c *singleGeneration) uplink(h string, oldDir string) {
-	dst := filepath.Join(c.dir, h)
-	src := filepath.Join(oldDir, h)
+	dst := c.blobPath(h)
+	src := c.blobPathDir(oldDir, h)
 	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	os.Link(src, dst)
-	c.mutex.Unlock()
 	if _, err := os.Stat(dst); err == nil {
 		c.addToCache(h)
 	}
@@ -173,21 +289,28 @@ func (c *singleGeneration) uplink(h string, oldDir string) {
 
 func (c *singleGeneration) reset() {
 	c.mutex.Lock()
-	c.initShards()
-	entries, err := os.ReadDir(c.dir)
-	if err != nil {
-		log.Panicf("Unable to access directory %s", c.dir)
+	defer c.mutex.Unlock()
+	for _, shard := range c.shards {
+		shard.stopTicker()
 	}
-	for _, f := range entries {
-		name := filepath.Join(c.dir, f.Name())
-		os.RemoveAll(name)
+	c.initShards(c.timeInterval, c.maxBlobsPerShard)
+	err := filepath.WalkDir(c.dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() {
+			os.RemoveAll(path)
+		}
+		return err
+	})
+	if err != nil {
+		log.Printf("While resetting %s: %#v", c.dir, err)
 	}
 	c.lastCleanUpTimeStamp = time.Now().Unix()
-	c.mutex.Unlock()
 }
 
 func (c *singleGeneration) get(hash string) ([]byte, error) {
-	name := filepath.Join(c.dir, hash)
+	name := c.blobPath(hash)
 	c.mutex.RLock()
 	data, err := os.ReadFile(name)
 	c.mutex.RUnlock()
@@ -238,26 +361,36 @@ func (c *singleGeneration) findMissing(digests digest.Set) (digest.Set, []toBeCo
 	}()
 	consumersWG.Wait()
 	return missing.Build(), upstream
+}
 
+func computeSize(root string) int64 {
+	var sizeBytes int64
+	err := filepath.WalkDir(root, func(_ string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() {
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			sizeBytes += info.Size()
+		}
+		return err
+	})
+	if err != nil {
+		log.Printf("While traversing directory %s: %#v", root, err)
+		return 0
+	}
+	return sizeBytes
 }
 
 func (c *singleGeneration) size() uint64 {
 	c.mutex.RLock()
-	entries, err := os.ReadDir(c.dir)
+	sizeBytes := computeSize(c.dir)
 	c.mutex.RUnlock()
-	if err != nil {
-		log.Panicf("Unable to access directory %s", c.dir)
-	}
-	var size int64
-	size = 0
-	for _, f := range entries {
-		x, err := f.Info()
-		if err == nil {
-			size += x.Size()
-		}
-	}
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.curSize = uint64(size)
+	c.curSize = uint64(sizeBytes)
 	return c.curSize
 }
