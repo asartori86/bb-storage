@@ -74,7 +74,6 @@ func (s *shard) prune() {
 			return list[i].Value.Before(list[j].Value)
 		})
 		for x := 0; x < delta; x++ {
-			log.Printf("pruning %s [%s]", list[x].Key, list[x].Value)
 			delete(s.cache, list[x].Key)
 		}
 	}
