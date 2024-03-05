@@ -759,6 +759,12 @@ def go_dependencies():
         version = "v1.4.13",
     )
     go_repository(
+        name = "com_github_seehuhn_mt19937",
+        importpath = "github.com/seehuhn/mt19937",
+        sum = "h1:r02DuVkQXfohssWZO8L/TeAlYOah7aNNubEHB/7Vtfs=",
+        version = "v1.0.0",
+    )
+    go_repository(
         name = "com_google_cloud_go",
         importpath = "cloud.google.com/go",
         sum = "h1:Zc8gqp3+a9/Eyph2KDmcGaPtbKRIoqq4YTlL4NMD0Ys=",

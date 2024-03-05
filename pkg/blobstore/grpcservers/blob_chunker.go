@@ -3,6 +3,8 @@ package grpcservers
 import (
 	"io"
 	"math/rand"
+
+	"github.com/seehuhn/mt19937"
 )
 
 type BlobChunker struct {
@@ -30,7 +32,8 @@ var (
 )
 
 func init() {
-	rnd := rand.New(rand.NewSource(0))
+	rnd := rand.New(mt19937.New())
+	rnd.Seed(0)
 	for i := range gearTable {
 		gearTable[i] = rnd.Uint64()
 	}
