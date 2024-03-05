@@ -54,7 +54,14 @@ func (f Function) GetEnumValue() remoteexecution.DigestFunction_Value {
 func (f Function) NewGenerator(expectedSizeBytes int64) *Generator {
 	return &Generator{
 		digestFunction: f,
-		partialHash:    f.bareFunction.hasherFactory(expectedSizeBytes),
+		partialHash:    f.bareFunction.hasherFactory(expectedSizeBytes, false),
+	}
+}
+
+func (f Function) NewTreeGenerator(expectedSizeBytes int64) *Generator {
+	return &Generator{
+		digestFunction: f,
+		partialHash:    f.bareFunction.hasherFactory(expectedSizeBytes, true),
 	}
 }
 

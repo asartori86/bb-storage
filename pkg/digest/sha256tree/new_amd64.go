@@ -17,7 +17,7 @@ const (
 
 // New creates a SHA256TREE hasher. Depending on the expected size,
 // either a vectorized or a scalar hasher is created.
-func New(expectedSizeBytes int64) hash.Hash {
+func New(expectedSizeBytes int64, isTree bool) hash.Hash {
 	if expectedSizeBytes > vectorizedChunksSizeBytes && cpu.X86.HasAVX2 {
 		return newVectorizedHasher(expectedSizeBytes)
 	}

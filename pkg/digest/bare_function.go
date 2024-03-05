@@ -35,28 +35,28 @@ const shortestSupportedHashStringSize = md5.Size * 2
 // this implementation.
 type bareFunction struct {
 	enumValue     remoteexecution.DigestFunction_Value
-	hasherFactory func(expectedSizeBytes int64) hash.Hash
+	hasherFactory func(expectedSizeBytes int64, isTree bool) hash.Hash
 	hashBytesSize int
 }
 
 var (
 	md5BareFunction = bareFunction{
 		enumValue: remoteexecution.DigestFunction_MD5,
-		hasherFactory: func(expectedSizeBytes int64) hash.Hash {
+		hasherFactory: func(expectedSizeBytes int64, isTree bool) hash.Hash {
 			return md5.New()
 		},
 		hashBytesSize: md5.Size,
 	}
 	sha1BareFunction = bareFunction{
 		enumValue: remoteexecution.DigestFunction_SHA1,
-		hasherFactory: func(expectedSizeBytes int64) hash.Hash {
+		hasherFactory: func(expectedSizeBytes int64, isTree bool) hash.Hash {
 			return sha1.New()
 		},
 		hashBytesSize: sha1.Size,
 	}
 	sha256BareFunction = bareFunction{
 		enumValue: remoteexecution.DigestFunction_SHA256,
-		hasherFactory: func(expectedSizeBytes int64) hash.Hash {
+		hasherFactory: func(expectedSizeBytes int64, isTree bool) hash.Hash {
 			return sha256.New()
 		},
 		hashBytesSize: sha256.Size,
@@ -68,21 +68,24 @@ var (
 	}
 	sha384BareFunction = bareFunction{
 		enumValue: remoteexecution.DigestFunction_SHA384,
-		hasherFactory: func(expectedSizeBytes int64) hash.Hash {
+		hasherFactory: func(expectedSizeBytes int64, isTree bool) hash.Hash {
 			return sha512.New384()
 		},
 		hashBytesSize: sha512.Size384,
 	}
 	sha512BareFunction = bareFunction{
 		enumValue: remoteexecution.DigestFunction_SHA512,
-		hasherFactory: func(expectedSizeBytes int64) hash.Hash {
+		hasherFactory: func(expectedSizeBytes int64, isTree bool) hash.Hash {
 			return sha512.New()
 		},
 		hashBytesSize: sha512.Size,
 	}
 	gitsha1BareFunction = bareFunction{
 		enumValue: remoteexecution.DigestFunction_GITSHA1,
-		hasherFactory: func(expectedSizeBytes int64) hash.Hash {
+		hasherFactory: func(expectedSizeBytes int64, isTree bool) hash.Hash {
+			if isTree {
+				return justbuild.NewTreeHasher()
+			}
 			return justbuild.NewBlobHasher()
 		},
 		hashBytesSize: justbuild.Size,

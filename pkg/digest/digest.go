@@ -376,14 +376,8 @@ func (d Digest) ToSingletonSet() Set {
 // The expected size can be used as a hint to create an appropriately
 // sized hasher. If the expected size is unknown, provide math.MaxInt64.
 func (d Digest) NewHasher(expectedSizeBytes int64) hash.Hash {
-	digestFunction, hashStart, _, _, _ := d.unpack()
-	if digestFunction == remoteexecution.DigestFunction_GITSHA1 {
-		if d.value[hashStart:hashStart+justbuild.MarkerSize] == justbuild.BlobMarker {
-			return justbuild.NewBlobHasher()
-		}
-		return justbuild.NewTreeHasher()
-	}
-	return getBareFunction(digestFunction, 0).hasherFactory(expectedSizeBytes)
+	digestFunction, _, _, _, _ := d.unpack()
+	return getBareFunction(digestFunction, 0).hasherFactory(expectedSizeBytes, justbuild.IsJustbuildTree(d.GetHashString()))
 }
 
 // GetDigestFunction returns a Function object that can be used to

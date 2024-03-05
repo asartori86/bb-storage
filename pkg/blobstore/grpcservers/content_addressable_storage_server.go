@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
+	"os"
 
 	remoteexecution "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/buildbarn/bb-storage/pkg/blobstore"
 	"github.com/buildbarn/bb-storage/pkg/blobstore/buffer"
 	"github.com/buildbarn/bb-storage/pkg/digest"
+	"github.com/buildbarn/bb-storage/pkg/justbuild"
 	"github.com/buildbarn/bb-storage/pkg/util"
 
 	"google.golang.org/grpc/codes"
@@ -231,6 +234,117 @@ func (s *contentAddressableStorageServer) SplitBlob(ctx context.Context, in *rem
 	log.Println(str)
 	response := &remoteexecution.SplitBlobResponse{
 		ChunkDigests: chunkDigests,
+	}
+	return response, nil
+}
+
+func (s *contentAddressableStorageServer) SpliceBlob(ctx context.Context, in *remoteexecution.SpliceBlobRequest) (*remoteexecution.SpliceBlobResponse, error) {
+	if in.BlobDigest == nil {
+		err := status.Error(codes.InvalidArgument, "SpliceBlob: no blob digest provided")
+		log.Println(err)
+		return nil, err
+	}
+	log.Printf("SpliceBlob(%s, %d chunks)", in.BlobDigest.GetHash(), len(in.ChunkDigests))
+	instanceName, err := digest.NewInstanceName(in.InstanceName)
+	if err != nil {
+		err := util.StatusWrapf(err, "SpliceBlob: invalid instance name %#v", in.InstanceName)
+		log.Println(err)
+		return nil, err
+	}
+	digestFunction, err := instanceName.GetDigestFunction(remoteexecution.DigestFunction_UNKNOWN, len(in.BlobDigest.GetHash()))
+	if err != nil {
+		err := util.StatusWrapf(err, "SpliceBlob: invalid digest length %d", len(in.BlobDigest.GetHash()))
+		log.Println(err)
+		return nil, err
+	}
+	blobDigest, err := digestFunction.NewDigestFromProto(in.BlobDigest)
+	if err != nil {
+		err := util.StatusWrap(err, "SpliceBlob: digest generation from proto message failed")
+		log.Println(err)
+		return nil, err
+	}
+	// Assemble blob from chunks using a temp file.
+	tmpFile, err := os.CreateTemp("", "blob") // default temp directory is used, a random string is added to "blob"
+	if err != nil {
+		err := util.StatusWrapf(err, "SpliceBlob: temp file could not be created")
+		log.Println(err)
+		return nil, err
+	}
+	defer os.Remove(tmpFile.Name())
+	var generator *digest.Generator
+	if justbuild.IsJustbuildTree(blobDigest.GetHashString()) {
+		generator = digestFunction.NewTreeGenerator(math.MaxInt64)
+	} else {
+		generator = digestFunction.NewGenerator(math.MaxInt64)
+	}
+	for _, chunkDigestProto := range in.ChunkDigests {
+		chunkDigest, err := digestFunction.NewDigestFromProto(chunkDigestProto)
+		if err != nil {
+			err := util.StatusWrap(err, "SpliceBlob: digest generation from proto message failed")
+			log.Println(err)
+			return nil, err
+		}
+		// Check chunk existence.
+		inDigests := digest.NewSetBuilder()
+		inDigests.Add(chunkDigest)
+		ctxWithCancel, cancel := context.WithCancel(ctx)
+		outDigests, err := s.contentAddressableStorage.FindMissing(ctxWithCancel, inDigests.Build())
+		if !outDigests.Empty() {
+			cancel()
+			err := status.Errorf(codes.NotFound, "SpliceBlob: chunk not found %s", chunkDigest.GetHashString())
+			log.Println(err)
+			return nil, err
+		}
+		// Load chunk data and append to temp file.
+		ctxWithCancel, _ = context.WithCancel(ctx)
+		chunkBuffer, chunkBufferCopy := s.contentAddressableStorage.Get(ctxWithCancel, chunkDigest).CloneCopy(math.MaxInt32)
+		err = chunkBuffer.IntoWriter(tmpFile)
+		if err != nil {
+			err := util.StatusWrap(err, "SpliceBlob: could not write chunk into temp file")
+			log.Println(err)
+			return nil, err
+		}
+		chunk, err := chunkBufferCopy.ToByteSlice(math.MaxInt32)
+		if err != nil {
+			err := util.StatusWrap(err, "SpliceBlob: creating slice from chunk buffer failed")
+			log.Println(err)
+			return nil, err
+		}
+		_, err = generator.Write(chunk)
+		if err != nil {
+			err := util.StatusWrap(err, "SpliceBlob: writing chunk into the digest generator failed")
+			log.Println(err)
+			return nil, err
+		}
+	}
+	err = tmpFile.Close()
+	if err != nil {
+		err := util.StatusWrap(err, "SpliceBlob: could not successfully close temp file")
+		log.Println(err)
+		return nil, err
+	}
+	// Check digest consistency.
+	computedBlobDigest := generator.Sum()
+	compatibleMode := digestFunction.GetEnumValue() != remoteexecution.DigestFunction_GITSHA1
+	if blobDigest.GetHashString() != computedBlobDigest.GetHashString() || ((compatibleMode || blobDigest.GetSizeBytes() > 0) && (blobDigest.GetSizeBytes() != computedBlobDigest.GetSizeBytes())) {
+		err := status.Errorf(codes.InvalidArgument, "SpliceBlob: provided digest %s:%d and computed digest %s:%d do not correspond.", blobDigest.GetHashString(), blobDigest.GetSizeBytes(), computedBlobDigest.GetHashString(), computedBlobDigest.GetHashBytes())
+		log.Println(err)
+		return nil, err
+	}
+	// Store temp file in CAS as blob.
+	ctxWithCancel, cancel := context.WithCancel(ctx)
+	err = s.contentAddressableStorage.Put(
+		ctxWithCancel,
+		blobDigest,
+		buffer.NewCASBufferFromReader(blobDigest, tmpFile, buffer.UserProvided))
+	if err != nil {
+		cancel()
+		err := util.StatusWrapf(err, "SpliceBlob: could not store blob %s", blobDigest.GetHashString())
+		log.Println(err)
+		return nil, err
+	}
+	response := &remoteexecution.SpliceBlobResponse{
+		BlobDigest: computedBlobDigest.GetProto(),
 	}
 	return response, nil
 }
