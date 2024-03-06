@@ -159,7 +159,12 @@ func (s *contentAddressableStorageServer) SplitBlob(ctx context.Context, in *rem
 		log.Println(err)
 		return nil, err
 	}
-	log.Printf("SplitBlob(%s)", in.BlobDigest.GetHash())
+	log.Printf("SplitBlob(%s, %s)", in.BlobDigest.GetHash(), remoteexecution.ChunkingAlgorithm_Value_name[int32(in.ChunkingAlgorithm)])
+	if in.ChunkingAlgorithm != remoteexecution.ChunkingAlgorithm_IDENTITY && in.ChunkingAlgorithm != remoteexecution.ChunkingAlgorithm_FASTCDC_MT0_8KB {
+		log.Println("SplitBlob: unsupported chunking algorithm %s, will use default implementation %s",
+			remoteexecution.ChunkingAlgorithm_Value_name[int32(in.ChunkingAlgorithm)],
+			remoteexecution.ChunkingAlgorithm_Value_name[int32(remoteexecution.ChunkingAlgorithm_FASTCDC_MT0_8KB)])
+	}
 	instanceName, err := digest.NewInstanceName(in.InstanceName)
 	if err != nil {
 		err := util.StatusWrapf(err, "SplitBlob: invalid instance name %#v", in.InstanceName)
@@ -189,42 +194,78 @@ func (s *contentAddressableStorageServer) SplitBlob(ctx context.Context, in *rem
 		log.Println(err)
 		return nil, err
 	}
-	ctxWithCancel, _ = context.WithCancel(ctx)
-	blobReader := s.contentAddressableStorage.Get(ctxWithCancel, blobDigest).ToReader()
-	// Split blob into chunks, store each chunk in CAS, and collect chunk
-	// digests.
-	chunker := NewBlobChunker(blobReader, DefaultChunkSize)
+	// Handle chunking algorithms.
 	chunkDigests := []*remoteexecution.Digest{}
-	for {
-		chunk, err := chunker.NextChunk()
-		if err == io.EOF {
-			break
+	if in.ChunkingAlgorithm == remoteexecution.ChunkingAlgorithm_IDENTITY {
+		if justbuild.IsJustbuildTree(blobDigest.GetHashString()) {
+			ctxWithCancel, cancel := context.WithCancel(ctx)
+			treeContent, err := s.contentAddressableStorage.Get(ctxWithCancel, blobDigest).ToByteSlice(math.MaxInt32)
+			if err != nil {
+				cancel()
+				err := util.StatusWrap(err, "SplitBlob: could not read tree data")
+				log.Println(err)
+				return nil, err
+			}
+			generator := digestFunction.NewGenerator(math.MaxInt64)
+			_, err = generator.Write(treeContent)
+			if err != nil {
+				err := util.StatusWrap(err, "SplitBlob: writing tree data into the digest generator failed")
+				log.Println(err)
+				return nil, err
+			}
+			treeDigest := generator.Sum()
+			ctxWithCancel, cancel = context.WithCancel(ctx)
+			err = s.contentAddressableStorage.Put(
+				ctxWithCancel,
+				treeDigest,
+				buffer.NewCASBufferFromByteSlice(treeDigest, treeContent, buffer.UserProvided))
+			if err != nil {
+				cancel()
+				err := util.StatusWrapf(err, "SplitBlob: storing tree as blob failed %s", treeDigest.GetHashString())
+				log.Println(err)
+				return nil, err
+			}
+			chunkDigests = append(chunkDigests, treeDigest.GetProto())
+		} else {
+			chunkDigests = append(chunkDigests, blobDigest.GetProto())
 		}
-		if err != nil {
-			err := util.StatusWrap(err, "SplitBlob: determining next chunk failed")
-			log.Println(err)
-			return nil, err
+	} else {
+		ctxWithCancel, _ = context.WithCancel(ctx)
+		blobReader := s.contentAddressableStorage.Get(ctxWithCancel, blobDigest).ToReader()
+		// Split blob into chunks, store each chunk in CAS, and collect chunk
+		// digests.
+		chunker := NewBlobChunker(blobReader, DefaultChunkSize)
+		for {
+			chunk, err := chunker.NextChunk()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				err := util.StatusWrap(err, "SplitBlob: determining next chunk failed")
+				log.Println(err)
+				return nil, err
+			}
+			generator := digestFunction.NewGenerator(int64(chunker.maxChunkSize))
+			_, err = generator.Write(chunk)
+			if err != nil {
+				err := util.StatusWrap(err, "SplitBlob: writing chunk into the digest generator failed")
+				log.Println(err)
+				return nil, err
+			}
+			chunkDigest := generator.Sum()
+			ctxWithCancel, cancel := context.WithCancel(ctx)
+			err = s.contentAddressableStorage.Put(
+				ctxWithCancel,
+				chunkDigest,
+				buffer.NewCASBufferFromByteSlice(chunkDigest, chunk, buffer.UserProvided))
+			if err != nil {
+				cancel()
+				err := util.StatusWrapf(err, "SplitBlob: storing of chunk failed %s", chunkDigest.GetHashString())
+				log.Println(err)
+				return nil, err
+			}
+			chunkDigests = append(chunkDigests, chunkDigest.GetProto())
 		}
-		generator := digestFunction.NewGenerator(int64(chunker.maxChunkSize))
-		_, err = generator.Write(chunk)
-		if err != nil {
-			err := util.StatusWrap(err, "SplitBlob: creating digest generator failed")
-			log.Println(err)
-			return nil, err
-		}
-		chunkDigest := generator.Sum()
-		ctxWithCancel, cancel := context.WithCancel(ctx)
-		err = s.contentAddressableStorage.Put(
-			ctxWithCancel,
-			chunkDigest,
-			buffer.NewCASBufferFromByteSlice(chunkDigest, chunk, buffer.UserProvided))
-		if err != nil {
-			cancel()
-			err := util.StatusWrapf(err, "SplitBlob: storing of chunk failed %s", chunkDigest.GetHashString())
-			log.Println(err)
-			return nil, err
-		}
-		chunkDigests = append(chunkDigests, chunkDigest.GetProto())
 	}
 	str := fmt.Sprintf("Split blob %s:%d into [ ", blobDigest.GetHashString(), blobDigest.GetSizeBytes())
 	for _, chunkDigest := range chunkDigests {

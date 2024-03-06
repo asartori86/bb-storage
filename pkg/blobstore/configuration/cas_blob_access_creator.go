@@ -30,6 +30,7 @@ var casCapabilitiesProvider = capabilities.NewStaticProvider(&remoteexecution.Se
 	CacheCapabilities: &remoteexecution.CacheCapabilities{
 		DigestFunctions: digest.SupportedDigestFunctions,
 		// MaxBatchTotalSize: Not used by Bazel yet.
+		SupportedChunkingAlgorithms: []remoteexecution.ChunkingAlgorithm_Value{remoteexecution.ChunkingAlgorithm_FASTCDC_MT0_8KB},
 	},
 })
 
