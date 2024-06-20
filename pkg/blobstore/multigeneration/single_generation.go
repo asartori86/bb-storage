@@ -110,11 +110,17 @@ type singleGeneration struct {
 	maxBlobsPerShard     uint32
 }
 
-func newSingleGeneration(root string, idx uint32, nShards uint32, maxBlobsPerShard uint32, timeStamp int64, timeInterval time.Duration) (*singleGeneration, int64) {
+func createDirectory(root string) error {
+	err := os.MkdirAll(root, 0700)
+	if err != nil {
+		log.Panicf("Unable to create directory %s", root)
+		return err
+	}
 	// sanity check that we have access to the directory we will handle
-	_, err := os.ReadDir(root)
+	_, err = os.ReadDir(root)
 	if err != nil {
 		log.Panicf("Unable to access directory %s", root)
+		return err
 	}
 
 	// create all possible directories such that we don't need to check when a
@@ -124,16 +130,32 @@ func newSingleGeneration(root string, idx uint32, nShards uint32, maxBlobsPerSha
 		err = os.MkdirAll(dir, 0700)
 		if err != nil {
 			log.Panicf("Unable to create directory %s", dir)
+			return err
 		}
 		_, err = os.Stat(dir)
 		if err != nil {
 			log.Panicf("Unable to access directory %s", dir)
+			return err
 		}
 	}
+	return nil
+}
 
-	// compute the timestamp of the oldest blob (or directory) present (if any)
-	// to correctly display the cache uptime
-	generationTime := timeStamp
+func newSingleGeneration(root string, idx uint32, nShards uint32, maxBlobsPerShard uint32, timeStamp int64, timeInterval time.Duration) (*singleGeneration, int64) {
+
+	err := createDirectory(root)
+	if err != nil {
+		return nil, 0
+	}
+
+	// compute the timestamp of the youngest blob (or directory) present (if any)
+	// to figure it out the youngest generation
+	info, err := os.Stat(root)
+	if err != nil {
+		log.Panicf("Unable to access directory %s", root)
+	}
+
+	generationTime := info.ModTime().Unix()
 	mostRecentBlob := timeStamp * 0
 	sizeBytes := 0
 	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
@@ -145,9 +167,6 @@ func newSingleGeneration(root string, idx uint32, nShards uint32, maxBlobsPerSha
 			return err
 		}
 		t := info.ModTime().Unix()
-		if t < generationTime {
-			generationTime = t
-		}
 		if t > mostRecentBlob {
 			mostRecentBlob = t
 		}
@@ -297,26 +316,20 @@ func (c *singleGeneration) uplink(h string, oldDir string) {
 	}
 }
 
-func (c *singleGeneration) reset() {
+func (c *singleGeneration) reset() error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	for _, shard := range c.shards {
 		shard.stopTicker()
 	}
 	c.initShards(c.timeInterval, c.maxBlobsPerShard)
-	err := filepath.WalkDir(c.dir, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !entry.IsDir() {
-			os.RemoveAll(path)
-		}
-		return err
-	})
+	os.RemoveAll(c.dir)
+	err := createDirectory(c.dir)
 	if err != nil {
-		log.Printf("While resetting %s: %#v", c.dir, err)
+		return err
 	}
 	c.lastCleanUpTimeStamp = time.Now().Unix()
+	return nil
 }
 
 func (c *singleGeneration) get(hash string) ([]byte, error) {

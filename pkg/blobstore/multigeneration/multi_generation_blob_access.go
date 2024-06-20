@@ -460,10 +460,13 @@ func (c *multiGenerationBlobAccess) ReleaseRotateLock(ctx context.Context, in *e
 }
 
 func (c *multiGenerationBlobAccess) DoRotate(ctx context.Context, in *emptypb.Empty) (*mg_proto.MultiGenReply, error) {
-	next := c.indexToBeDeleted()
+	i := c.indexToBeDeleted()
 	c.rotate()
 	defer c.rotateLock.Unlock()
-	c.generations[next].reset()
+	err := c.generations[i].reset()
+	if err != nil {
+		return &mg_proto.MultiGenReply{Status: mg_proto.MultiGenStatus_INTERNAL_ERROR}, err
+	}
 	c.muninLog()
 	c.statusLock.Lock()
 	defer c.statusLock.Unlock()
@@ -477,7 +480,10 @@ func (c *multiGenerationBlobAccess) DoReset(ctx context.Context, in *emptypb.Emp
 	for i := uint32(0); i < n; i++ {
 		// also reset the indexes such that all storage pods restart from the same generation number
 		c.indexes[i] = i
-		c.generations[i].reset()
+		err := c.generations[i].reset()
+		if err != nil {
+			return &mg_proto.MultiGenReply{Status: mg_proto.MultiGenStatus_INTERNAL_ERROR}, err
+		}
 	}
 	c.muninLog()
 	defer c.rotateLock.Unlock()
