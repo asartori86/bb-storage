@@ -5,11 +5,10 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
-	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -18,84 +17,29 @@ import (
 	emptyblobs "github.com/buildbarn/bb-storage/pkg/empty_blobs"
 )
 
-type Pair struct {
-	Key   string
-	Value time.Time
-}
-
 type shard struct {
-	cache   map[string]time.Time
-	rwLock  sync.RWMutex
-	ticker  *time.Ticker
-	done    chan (bool)
-	maxSize int
+	cache *lruCache
+	lock  sync.Mutex
 }
 
-func newShard(timeInterval time.Duration, maxBlobs uint32) *shard {
+func newShard(maxBlobs uint32) *shard {
 	x := shard{
-		cache:   map[string]time.Time{},
-		rwLock:  sync.RWMutex{},
-		ticker:  time.NewTicker(timeInterval),
-		done:    make(chan bool, 1),
-		maxSize: int(maxBlobs),
+		cache: NewLRUCache(maxBlobs),
+		lock:  sync.Mutex{},
 	}
-	go func() {
-		for {
-			select {
-			case <-x.done:
-				return
-			case <-x.ticker.C:
-				x.prune()
-			}
-		}
-	}()
 	return &x
 }
 
-func (s *shard) stopTicker() {
-	s.ticker.Stop()
-	s.done <- true
-}
-
-func (s *shard) prune() {
-	s.rwLock.Lock()
-	defer s.rwLock.Unlock()
-	delta := len(s.cache) - s.maxSize
-	if delta > 0 {
-		log.Printf("Pruning cache: number of elements %d exceeds %d", len(s.cache), s.maxSize)
-		list := []Pair{}
-		for k, v := range s.cache {
-			list = append(list, Pair{
-				Key:   k,
-				Value: v,
-			})
-		}
-		sort.SliceStable(list, func(i, j int) bool {
-			return list[i].Value.Before(list[j].Value)
-		})
-		for x := 0; x < delta; x++ {
-			delete(s.cache, list[x].Key)
-		}
-	}
-}
-
 func (s *shard) has(h string) bool {
-	s.rwLock.RLock()
-	_, ok := s.cache[h]
-	s.rwLock.RUnlock()
-	if ok {
-		s.rwLock.Lock()
-		defer s.rwLock.Unlock()
-		s.cache[h] = time.Now()
-		return true
-	}
-	return false
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return s.cache.Has(h)
 }
 
 func (s *shard) add(h string) {
-	s.rwLock.Lock()
-	s.cache[h] = time.Now()
-	s.rwLock.Unlock()
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.cache.Add(h)
 }
 
 type singleGeneration struct {
@@ -106,7 +50,6 @@ type singleGeneration struct {
 	mutex                sync.RWMutex
 	lastCleanUpTimeStamp int64
 	curSize              uint64
-	timeInterval         time.Duration
 	maxBlobsPerShard     uint32
 }
 
@@ -141,11 +84,45 @@ func createDirectory(root string) error {
 	return nil
 }
 
-func newSingleGeneration(root string, idx uint32, nShards uint32, maxBlobsPerShard uint32, timeStamp int64, timeInterval time.Duration) (*singleGeneration, int64) {
+func readEpoch(root string) (int64, error) {
+	epochFile := filepath.Join(root, "epoch")
+	_, err := os.Stat(epochFile)
+	if err != nil {
+		return -1, err
+	}
+	data, err := os.ReadFile(epochFile)
+	if err != nil {
+		return -1, err
+	}
+	t, err := strconv.ParseInt(string(data), 10, 64)
+	if err != nil {
+		return -1, err
+	}
+	return t, nil
+}
+
+func readSize(root string) (uint64, error) {
+	epochFile := filepath.Join(root, "size")
+	_, err := os.Stat(epochFile)
+	if err != nil {
+		return 0, err
+	}
+	data, err := os.ReadFile(epochFile)
+	if err != nil {
+		return 0, err
+	}
+	s, err := strconv.ParseUint(string(data), 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return s, nil
+}
+
+func newSingleGeneration(root string, idx uint32, nShards uint32, maxBlobsPerShard uint32, timeStamp int64, timeInterval time.Duration) *singleGeneration {
 
 	err := createDirectory(root)
 	if err != nil {
-		return nil, 0
+		return nil
 	}
 
 	// compute the timestamp of the youngest blob (or directory) present (if any)
@@ -154,31 +131,15 @@ func newSingleGeneration(root string, idx uint32, nShards uint32, maxBlobsPerSha
 	if err != nil {
 		log.Panicf("Unable to access directory %s", root)
 	}
-
 	generationTime := info.ModTime().Unix()
-	mostRecentBlob := timeStamp * 0
-	sizeBytes := 0
-	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		t := info.ModTime().Unix()
-		if t > mostRecentBlob {
-			mostRecentBlob = t
-		}
-		if !info.IsDir() {
-			sizeBytes += int(info.Size())
-		}
-		return err
-	})
 
-	if err != nil {
-		log.Printf("while traversing %s for computing the oldest time stamp: %#v", root, err)
+	// check if epoch file is present
+	t, err := readEpoch(root)
+	if err == nil {
+		generationTime = t
 	}
+	// check if file size is present
+	size, _ := readSize(root)
 	x := singleGeneration{
 		dir:                  root,
 		idx:                  idx,
@@ -186,17 +147,18 @@ func newSingleGeneration(root string, idx uint32, nShards uint32, maxBlobsPerSha
 		shards:               make([]*shard, nShards),
 		mutex:                sync.RWMutex{},
 		lastCleanUpTimeStamp: generationTime,
-		curSize:              uint64(sizeBytes),
-		timeInterval:         timeInterval,
+		curSize:              size,
 		maxBlobsPerShard:     maxBlobsPerShard,
 	}
-	x.initShards(timeInterval, maxBlobsPerShard)
-	return &x, mostRecentBlob
+	x.initShards(maxBlobsPerShard)
+	x.dumpEpoch()
+	x.dumpSize()
+	return &x
 }
 
-func (c *singleGeneration) initShards(timeInterval time.Duration, maxBlobs uint32) {
+func (c *singleGeneration) initShards(maxBlobs uint32) {
 	for i := uint32(0); i < c.nShards; i++ {
-		c.shards[i] = newShard(timeInterval, maxBlobs)
+		c.shards[i] = newShard(maxBlobs)
 	}
 }
 
@@ -229,28 +191,25 @@ func (c *singleGeneration) shardIdx(key string) uint32 {
 }
 
 func (c *singleGeneration) has(h string) bool {
-	i := c.shardIdx(h)
 	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+	i := c.shardIdx(h)
 	if c.shards[i].has(h) {
-		c.mutex.RUnlock()
 		return true
 	}
+
 	name := c.blobPath(h)
 	_, err := os.Stat(name)
 	if err == nil {
 		c.addToCache(h)
-		c.mutex.RUnlock()
 		return true
 	}
 	// to be removed: allow for a smooth transition to blob sharding
 	legacyName := filepath.Join(c.dir, h)
 	_, err = os.Stat(legacyName)
-	c.mutex.RUnlock()
 	if err != nil {
 		return false
 	}
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
 	dst := c.blobPath(h)
 	os.Link(legacyName, dst)
 	c.addToCache(h)
@@ -294,8 +253,8 @@ func (c *singleGeneration) put(ctx context.Context, digest digest.Digest, b buff
 			hex.EncodeToString(sum),
 			hex.EncodeToString(expectedHash))
 	}
-	i := c.shardIdx(hash)
-	c.shards[i].add(hash)
+	c.addToCache(hash)
+	c.curSize += uint64(digest.GetSizeBytes())
 	return nil
 }
 
@@ -311,32 +270,35 @@ func (c *singleGeneration) uplink(h string, oldDir string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	os.Link(src, dst)
-	if _, err := os.Stat(dst); err == nil {
+	if x, err := os.Stat(dst); err == nil {
 		c.addToCache(h)
+		c.curSize += uint64(x.Size())
 	}
 }
 
 func (c *singleGeneration) reset() error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	for _, shard := range c.shards {
-		shard.stopTicker()
-	}
-	c.initShards(c.timeInterval, c.maxBlobsPerShard)
+	c.initShards(c.maxBlobsPerShard)
 	os.RemoveAll(c.dir)
 	err := createDirectory(c.dir)
 	if err != nil {
 		return err
 	}
 	c.lastCleanUpTimeStamp = time.Now().Unix()
+
+	c.curSize = 0
+	c.dumpEpoch()
+	c.dumpSize()
 	return nil
 }
 
 func (c *singleGeneration) get(hash string) ([]byte, error) {
-	name := c.blobPath(hash)
 	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+	name := c.blobPath(hash)
 	data, err := os.ReadFile(name)
-	c.mutex.RUnlock()
+	c.addToCache(hash)
 	return data, err
 }
 
@@ -386,34 +348,33 @@ func (c *singleGeneration) findMissing(digests digest.Set) (digest.Set, []toBeCo
 	return missing.Build(), upstream
 }
 
-func computeSize(root string) int64 {
-	var sizeBytes int64
-	err := filepath.WalkDir(root, func(_ string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !entry.IsDir() {
-			info, err := entry.Info()
-			if err != nil {
-				return err
-			}
-			sizeBytes += info.Size()
-		}
-		return err
-	})
-	if err != nil {
-		log.Printf("While traversing directory %s: %#v", root, err)
-		return 0
-	}
-	return sizeBytes
-}
-
 func (c *singleGeneration) size() uint64 {
-	c.mutex.RLock()
-	sizeBytes := computeSize(c.dir)
-	c.mutex.RUnlock()
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.curSize = uint64(sizeBytes)
+	c.dumpSize()
 	return c.curSize
+}
+
+func (c *singleGeneration) dumpSize() {
+	f, err := os.Create(filepath.Join(c.dir, "size"))
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	_, err = f.WriteString(fmt.Sprintf("%d", c.curSize))
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (c *singleGeneration) dumpEpoch() {
+	f, err := os.Create(filepath.Join(c.dir, "epoch"))
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	_, err = f.WriteString(fmt.Sprintf("%d", c.lastCleanUpTimeStamp))
+	if err != nil {
+		panic(err)
+	}
 }

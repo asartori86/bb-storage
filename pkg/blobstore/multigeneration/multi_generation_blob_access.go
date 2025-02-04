@@ -64,7 +64,8 @@ func NewMultiGenerationBlobAccess(nGenerations uint32, rotationSizeBytes uint64,
 	for i := uint32(0); i < nGenerations; i++ {
 		indexes[i] = i
 		genDir := filepath.Join(rootDir, fmt.Sprintf("gen-%d", i))
-		generations[i], timeStamps[i] = newSingleGeneration(genDir, i, nShardsSingleGen, maxBlobsPerShard, now, interval)
+		generations[i] = newSingleGeneration(genDir, i, nShardsSingleGen, maxBlobsPerShard, now, interval)
+		timeStamps[i] = generations[i].lastCleanUpTimeStamp
 	}
 
 	// In case the storage pod was restarted or updated and the previous
